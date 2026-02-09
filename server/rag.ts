@@ -15,11 +15,16 @@ async function getCaptainContext(query: string): Promise<string> {
   const parts: string[] = [];
 
   const matchResults = await Promise.all(
-    keywords.slice(0, 3).map(kw => storage.searchMatches(kw))
+    keywords.slice(0, 6).map(kw => storage.searchMatches(kw))
   );
   const uniqueMatches = new Map();
   matchResults.flat().forEach(m => uniqueMatches.set(m.id, m));
-  const relevantMatches = Array.from(uniqueMatches.values()).slice(0, 5);
+  let relevantMatches = Array.from(uniqueMatches.values()).slice(0, 5);
+
+  if (relevantMatches.length === 0) {
+    const allMatches = await storage.getMatches();
+    relevantMatches = allMatches.slice(0, 3);
+  }
 
   if (relevantMatches.length > 0) {
     parts.push("=== RELEVANT MATCH DATA ===");
@@ -153,11 +158,16 @@ async function getEquipmentContext(query: string): Promise<string> {
   const parts: string[] = [];
 
   const equipResults = await Promise.all(
-    keywords.slice(0, 3).map(kw => storage.searchEquipment(kw))
+    keywords.slice(0, 6).map(kw => storage.searchEquipment(kw))
   );
   const uniqueEquip = new Map();
   equipResults.flat().forEach(e => uniqueEquip.set(e.id, e));
-  const relevant = Array.from(uniqueEquip.values()).slice(0, 10);
+  let relevant = Array.from(uniqueEquip.values()).slice(0, 10);
+
+  if (relevant.length === 0) {
+    const allEquip = await storage.getEquipment();
+    relevant = allEquip.slice(0, 5);
+  }
 
   if (relevant.length > 0) {
     parts.push("=== EQUIPMENT DATABASE ===");
@@ -169,6 +179,23 @@ async function getEquipmentContext(query: string): Promise<string> {
       if (e.pros?.length) parts.push(`  Pros: ${e.pros.join(", ")}`);
       if (e.cons?.length) parts.push(`  Cons: ${e.cons.join(", ")}`);
       if (e.specifications) parts.push(`  Specs: ${JSON.stringify(e.specifications)}`);
+    });
+  }
+
+  const playerResults = await Promise.all(
+    keywords.slice(0, 2).map(kw => storage.searchPlayers(kw))
+  );
+  const uniquePlayers = new Map();
+  playerResults.flat().forEach(p => uniquePlayers.set(p.id, p));
+  const relevantPlayers = Array.from(uniquePlayers.values()).slice(0, 5);
+
+  if (relevantPlayers.length > 0) {
+    parts.push("\n=== PLAYER PROFILES (for equipment context) ===");
+    relevantPlayers.forEach(p => {
+      parts.push(`${p.name} (${p.country}) - ${p.role}`);
+      if (p.battingStyle) parts.push(`  Batting style: ${p.battingStyle}`);
+      if (p.bowlingStyle) parts.push(`  Bowling style: ${p.bowlingStyle}`);
+      if (p.specialization) parts.push(`  Specialization: ${p.specialization}`);
     });
   }
 
@@ -197,7 +224,16 @@ const SYSTEM_PROMPTS: Record<AppMode, string> = {
 - Powerplay and death over tactics
 - Spin vs pace bowling strategies on different pitches
 
-Use the match data and player profiles provided to give data-driven tactical advice. Reference specific matches, players, and statistics when available. Be specific about field positions (e.g., "deep mid-wicket", "short fine leg", "slip cordon") and bowling plans. Format your responses clearly with sections and bullet points where appropriate.`,
+Use the match data and player profiles provided to give data-driven tactical advice. Reference specific matches, players, and statistics when available. Be specific about field positions (e.g., "deep mid-wicket", "short fine leg", "slip cordon") and bowling plans. Format your responses clearly with sections and bullet points where appropriate.
+
+MATCH CITATIONS: When you reference relevant match situations from the provided data, you MUST include them as citations at the END of your response using this EXACT format:
+
+<<CITATION>>
+Match Title (e.g., "India vs Australia, T20 World Cup 2024")
+Key details: what happened, result, and why it's relevant to the user's question
+<<END_CITATION>>
+
+Include 1-3 citations per response when relevant match data is available. Each citation should be a separate <<CITATION>>...<<END_CITATION>> block. Place ALL citations BEFORE the <<FOLLOWUP>> tag if one exists. Draw parallels between the cited match and the user's situation.`,
 
   skills: `You are CricketIQ Skill Building Coach, an expert cricket technique analyst and coach. You help cricketers with:
 - Batting technique analysis (stance, grip, footwork, shot execution)
@@ -217,7 +253,21 @@ Use the player profiles and match delivery data provided to give technique-speci
 - Training equipment and bowling machines
 - Equipment maintenance and care tips
 
-Use the equipment database provided to make specific product comparisons and recommendations. Include pros/cons, price considerations, and suitability for different playing levels. Be objective and helpful.`,
+Use the equipment database provided to make specific product comparisons and recommendations. Include pros/cons, price considerations, and suitability for different playing levels. Be objective and helpful.
+
+PERSONALIZED RECOMMENDATIONS: When recommending equipment:
+1. Consider the user's playing position, level, and style.
+2. Reference what professional players in similar positions use (e.g., "Virat Kohli uses MRF Genius bats" or "Jasprit Bumrah prefers Asics bowling shoes").
+3. Suggest equipment from the database that matches their profile.
+
+YOUTUBE & ARTICLE REFERENCES: For each major equipment recommendation, include relevant review links at the END of your response using this EXACT format:
+
+<<REFERENCE>>
+[Review Title - Equipment Name](https://www.youtube.com/results?search_query=cricket+equipment+name+review)
+[Article Title](https://www.youtube.com/results?search_query=cricket+equipment+name+comparison)
+<<END_REFERENCE>>
+
+Include 2-5 reference links per response. Use YouTube search URLs formatted as https://www.youtube.com/results?search_query=... with relevant search terms for the specific equipment being discussed. Place ALL references BEFORE the <<FOLLOWUP>> tag if one exists.`,
 };
 
 const MULTI_TURN_INSTRUCTION = `
@@ -260,6 +310,70 @@ const FALLBACK_FOLLOWUPS: Record<AppMode, string[]> = {
   ],
 };
 
+export function enforceCitations(response: string, mode: AppMode, ragContext: string): string {
+  if (mode === "captain" && ragContext.includes("=== RELEVANT MATCH DATA ===")) {
+    if (!response.includes("<<CITATION>>") || !response.includes("<<END_CITATION>>")) {
+      const matchLines = ragContext.split("\n");
+      const matchTitles: string[] = [];
+      const matchDetails: string[] = [];
+      for (let i = 0; i < matchLines.length; i++) {
+        if (matchLines[i].startsWith("Match: ")) {
+          matchTitles.push(matchLines[i].replace("Match: ", ""));
+          const detailParts: string[] = [];
+          for (let j = i + 1; j < Math.min(i + 5, matchLines.length); j++) {
+            if (matchLines[j].startsWith("Result: ")) {
+              detailParts.push(matchLines[j]);
+            }
+            if (matchLines[j].startsWith("Teams: ")) {
+              detailParts.push(matchLines[j]);
+            }
+          }
+          matchDetails.push(detailParts.join(" | "));
+        }
+      }
+      if (matchTitles.length > 0) {
+        const citations = matchTitles.slice(0, 2).map((title, i) => {
+          return `\n\n<<CITATION>>\n${title}\n${matchDetails[i] || "Relevant match from database"}\n<<END_CITATION>>`;
+        });
+        const followUpIdx = response.indexOf("<<FOLLOWUP>>");
+        if (followUpIdx > -1) {
+          return response.slice(0, followUpIdx).trim() + citations.join("") + "\n\n" + response.slice(followUpIdx);
+        }
+        return response.trim() + citations.join("");
+      }
+    }
+  }
+  return response;
+}
+
+export function enforceReferences(response: string, mode: AppMode, ragContext: string): string {
+  if (mode === "equipment" && ragContext.includes("=== EQUIPMENT DATABASE ===")) {
+    if (!response.includes("<<REFERENCE>>") || !response.includes("<<END_REFERENCE>>")) {
+      const equipLines = ragContext.split("\n");
+      const equipNames: string[] = [];
+      for (const line of equipLines) {
+        const match = line.match(/^(.+?) by (.+?) - (.+)$/);
+        if (match) {
+          equipNames.push(match[1]);
+        }
+      }
+      if (equipNames.length > 0) {
+        const searchTerms = equipNames.slice(0, 3).map(name => {
+          const encoded = encodeURIComponent(`cricket ${name} review`);
+          return `[${name} Review](https://www.youtube.com/results?search_query=${encoded})`;
+        });
+        const refBlock = `\n\n<<REFERENCE>>\n${searchTerms.join("\n")}\n<<END_REFERENCE>>`;
+        const followUpIdx = response.indexOf("<<FOLLOWUP>>");
+        if (followUpIdx > -1) {
+          return response.slice(0, followUpIdx).trim() + refBlock + "\n\n" + response.slice(followUpIdx);
+        }
+        return response.trim() + refBlock;
+      }
+    }
+  }
+  return response;
+}
+
 export function enforceFollowUp(response: string, mode: AppMode, exchangeCount: number): string {
   if (exchangeCount >= 3) {
     return response.replace(/<<FOLLOWUP>>[\s\S]*?<<END_FOLLOWUP>>/g, "").trim();
@@ -275,8 +389,18 @@ export function enforceFollowUp(response: string, mode: AppMode, exchangeCount: 
   return response;
 }
 
-export function getSystemPrompt(mode: AppMode, exchangeCount: number): string {
+export function getSystemPrompt(mode: AppMode, exchangeCount: number, hasImage: boolean = false): string {
   let prompt = SYSTEM_PROMPTS[mode] + MULTI_TURN_INSTRUCTION;
+
+  if (hasImage) {
+    prompt += `\n\nIMAGE ANALYSIS: The user has uploaded an image or GIF. Carefully analyze the visual content.
+- If it shows a cricket stance, batting grip, bowling action, or fielding position, provide detailed technique analysis.
+- Point out specific body mechanics: foot position, hip alignment, head position, elbow angle, wrist position, weight distribution.
+- Identify any flaws or areas for improvement with clear explanations.
+- Compare to ideal technique or how top professionals execute the same skill.
+- Provide specific drills or exercises to address any identified issues.
+- If the image shows equipment, analyze its condition, suitability, and provide recommendations.`;
+  }
 
   if (exchangeCount >= 3) {
     prompt += `\n\nIMPORTANT: This conversation has had ${exchangeCount} user messages. The user has provided enough context through previous follow-ups. Give your FINAL, most comprehensive and personalized answer now. Do NOT include <<FOLLOWUP>> or <<END_FOLLOWUP>> tags. No more questions.`;

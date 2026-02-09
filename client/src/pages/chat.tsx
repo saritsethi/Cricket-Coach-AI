@@ -52,7 +52,7 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
     }
   }, [messages, streamingContent]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, imageUrl?: string) => {
     let currentConvId = conversationId;
 
     if (!currentConvId) {
@@ -72,7 +72,7 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
         const existingMessages = old?.messages || [];
         return {
           ...old,
-          messages: [...existingMessages, { id: Date.now(), role: "user", content, conversationId: currentConvId, createdAt: new Date().toISOString() }],
+          messages: [...existingMessages, { id: Date.now(), role: "user", content, imageUrl: imageUrl || null, conversationId: currentConvId, createdAt: new Date().toISOString() }],
         };
       }
     );
@@ -84,7 +84,7 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
       const response = await fetch(`/api/chat/${currentConvId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, mode }),
+        body: JSON.stringify({ content, mode, imageUrl }),
       });
 
       if (!response.ok) throw new Error("Failed to send message");
@@ -161,11 +161,12 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
           </div>
         ) : (
           <div className="flex flex-col gap-4 p-4 max-w-4xl mx-auto">
-            {messages.map((msg) => (
+            {messages.map((msg: any) => (
               <ChatMessage
                 key={msg.id}
                 role={msg.role as "user" | "assistant"}
                 content={msg.content}
+                imageUrl={msg.imageUrl}
               />
             ))}
             {isStreaming && (

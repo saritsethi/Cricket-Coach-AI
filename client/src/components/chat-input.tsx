@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send } from "lucide-react";
+import { Send, Paperclip, X, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, imageUrl?: string) => void;
   disabled?: boolean;
   placeholder?: string;
   value?: string;
@@ -13,7 +13,10 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled, placeholder, value, onChange }: ChatInputProps) {
   const [internalValue, setInternalValue] = useState("");
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; objectPath?: string } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentValue = value !== undefined ? value : internalValue;
   const setCurrentValue = onChange || setInternalValue;
@@ -25,10 +28,65 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
     }
   }, [currentValue]);
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setAttachedImage({ file, preview });
+
+    setIsUploading(true);
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: file.name,
+          size: file.size,
+          contentType: file.type,
+        }),
+      });
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+
+      setAttachedImage(prev => prev ? { ...prev, objectPath } : null);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setAttachedImage(null);
+    } finally {
+      setIsUploading(false);
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = () => {
+    if (attachedImage?.preview) {
+      URL.revokeObjectURL(attachedImage.preview);
+    }
+    setAttachedImage(null);
+  };
+
   const handleSubmit = () => {
-    if (!currentValue.trim() || disabled) return;
-    onSend(currentValue.trim());
+    if ((!currentValue.trim() && !attachedImage) || disabled || isUploading) return;
+    const messageText = currentValue.trim() || "Please analyze this image.";
+    onSend(messageText, attachedImage?.objectPath);
     setCurrentValue("");
+    removeAttachment();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -39,26 +97,72 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
   };
 
   return (
-    <div className="flex items-end gap-2 p-4 border-t border-border bg-background">
-      <Textarea
-        ref={textareaRef}
-        value={currentValue}
-        onChange={(e) => setCurrentValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder || "Ask about cricket strategies, techniques, or equipment..."}
-        disabled={disabled}
-        rows={1}
-        className="resize-none min-h-[40px] max-h-[160px] border-border text-sm"
-        data-testid="input-chat-message"
-      />
-      <Button
-        onClick={handleSubmit}
-        disabled={disabled || !currentValue.trim()}
-        size="icon"
-        data-testid="button-send-message"
-      >
-        <Send className="w-4 h-4" />
-      </Button>
+    <div className="border-t border-border bg-background">
+      {attachedImage && (
+        <div className="flex items-center gap-2 px-4 pt-3" data-testid="image-preview-container">
+          <div className="relative w-16 h-16 rounded-md overflow-hidden border border-border">
+            <img
+              src={attachedImage.preview}
+              alt="Attached"
+              className="w-full h-full object-cover"
+              data-testid="image-preview"
+            />
+            {isUploading && (
+              <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              </div>
+            )}
+            <button
+              onClick={removeAttachment}
+              className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+              data-testid="button-remove-attachment"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+            {attachedImage.file.name}
+          </span>
+        </div>
+      )}
+      <div className="flex items-end gap-2 p-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+          data-testid="input-file-upload"
+        />
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || isUploading}
+          data-testid="button-attach-image"
+        >
+          <Paperclip className="w-4 h-4" />
+        </Button>
+        <Textarea
+          ref={textareaRef}
+          value={currentValue}
+          onChange={(e) => setCurrentValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder || "Ask about cricket strategies, techniques, or equipment..."}
+          disabled={disabled}
+          rows={1}
+          className="resize-none min-h-[40px] max-h-[160px] border-border text-sm"
+          data-testid="input-chat-message"
+        />
+        <Button
+          onClick={handleSubmit}
+          disabled={disabled || isUploading || (!currentValue.trim() && !attachedImage)}
+          size="icon"
+          data-testid="button-send-message"
+        >
+          <Send className="w-4 h-4" />
+        </Button>
+      </div>
     </div>
   );
 }
