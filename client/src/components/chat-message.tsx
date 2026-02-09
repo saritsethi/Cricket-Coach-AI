@@ -1,5 +1,5 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, User } from "lucide-react";
+import { Bot, User, HelpCircle } from "lucide-react";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -7,8 +7,19 @@ interface ChatMessageProps {
   isStreaming?: boolean;
 }
 
+function parseFollowUp(text: string): { mainContent: string; followUp: string | null } {
+  const match = text.match(/<<FOLLOWUP>>([\s\S]*?)<<END_FOLLOWUP>>/);
+  if (match) {
+    const mainContent = text.replace(/<<FOLLOWUP>>[\s\S]*?<<END_FOLLOWUP>>/, "").trim();
+    const followUp = match[1].trim();
+    return { mainContent, followUp };
+  }
+  return { mainContent: text, followUp: null };
+}
+
 export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === "user";
+  const { mainContent, followUp } = isUser ? { mainContent: content, followUp: null } : parseFollowUp(content);
 
   return (
     <div
@@ -31,9 +42,20 @@ export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
           }
         `}
       >
-        {content ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-            {content}
+        {mainContent ? (
+          <div className="space-y-3">
+            <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+              {mainContent}
+            </div>
+            {followUp && (
+              <div
+                className="flex items-start gap-2 mt-3 pt-3 border-t border-border"
+                data-testid="followup-question"
+              >
+                <HelpCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-primary">{followUp}</p>
+              </div>
+            )}
           </div>
         ) : isStreaming ? (
           <div className="flex items-center gap-1.5">

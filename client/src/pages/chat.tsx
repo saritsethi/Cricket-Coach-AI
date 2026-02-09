@@ -113,6 +113,16 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
               setStreamingContent(fullResponse);
             }
             if (event.done) {
+              queryClient.setQueryData(
+                ["/api/conversations", currentConvId],
+                (old: any) => {
+                  const existingMessages = old?.messages || [];
+                  return {
+                    ...old,
+                    messages: [...existingMessages, { id: Date.now() + 1, role: "assistant", content: fullResponse, conversationId: currentConvId, createdAt: new Date().toISOString() }],
+                  };
+                }
+              );
               setIsStreaming(false);
               setStreamingContent("");
               queryClient.invalidateQueries({ queryKey: ["/api/conversations", currentConvId] });

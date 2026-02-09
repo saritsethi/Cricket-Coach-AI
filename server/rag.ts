@@ -220,6 +220,69 @@ Use the player profiles and match delivery data provided to give technique-speci
 Use the equipment database provided to make specific product comparisons and recommendations. Include pros/cons, price considerations, and suitability for different playing levels. Be objective and helpful.`,
 };
 
-export function getSystemPrompt(mode: AppMode): string {
-  return SYSTEM_PROMPTS[mode];
+const MULTI_TURN_INSTRUCTION = `
+
+CRITICAL FORMATTING REQUIREMENT - YOU MUST FOLLOW THIS:
+You are having a multi-turn conversation. These rules are MANDATORY:
+
+1. ALWAYS provide genuinely useful, actionable information in EVERY response. Never give a shallow or purely question-based response. Give real, detailed advice first.
+2. You MUST end your response with EXACTLY ONE follow-up question using these EXACT tags on a new line at the very end:
+
+<<FOLLOWUP>>Your follow-up question here?<<END_FOLLOWUP>>
+
+This is NOT optional. You MUST include the <<FOLLOWUP>> and <<END_FOLLOWUP>> tags in every response. The tags are required for the UI to render properly. If you forget them, the user experience breaks.
+3. The follow-up question should ask for specific details that would help you give better, more personalized advice in the next response.
+4. If the user says "just give me your best answer" or "skip the questions", give your comprehensive answer WITHOUT the follow-up tags.
+
+Example flow:
+- User asks about field placement for death overs
+- You: Give solid general advice about death over field placements with specific positions, THEN ask "<<FOLLOWUP>>What format is this match — T20, ODI, or Test — and what's the typical score range you're defending?<<END_FOLLOWUP>>"
+- User answers: "T20, defending 170"
+- You: Give more tailored T20-specific advice for defending 170, THEN ask "<<FOLLOWUP>>Which bowlers do you have available for the death — any quality yorker bowlers or mainly medium pacers?<<END_FOLLOWUP>>"
+- User answers: "Two pace bowlers who bowl good yorkers"
+- You: Give your final, highly specific plan with exact field placements, over-by-over bowling plan, no more questions.`;
+
+const FALLBACK_FOLLOWUPS: Record<AppMode, string[]> = {
+  captain: [
+    "What format is this match (T20, ODI, or Test) and what score are you defending or chasing?",
+    "Which bowlers do you have available and what are their strengths (yorkers, slower balls, spin)?",
+    "What are the key opposition batters' strengths and preferred scoring zones?",
+  ],
+  skills: [
+    "What is your current skill level (beginner, club, district, or professional) and how long have you been playing?",
+    "Are you primarily a batter, bowler, or all-rounder, and which specific area would you like to focus on improving?",
+    "What specific match situations or deliveries are you finding most challenging right now?",
+  ],
+  equipment: [
+    "What is your budget range, and what level do you play at (casual, club, district, or professional)?",
+    "What playing conditions do you typically face (hard pitches, green tops, spin-friendly, indoor nets)?",
+    "Do you have any specific brand preferences or requirements like weight, size, or material?",
+  ],
+};
+
+export function enforceFollowUp(response: string, mode: AppMode, exchangeCount: number): string {
+  if (exchangeCount >= 3) {
+    return response.replace(/<<FOLLOWUP>>[\s\S]*?<<END_FOLLOWUP>>/g, "").trim();
+  }
+
+  if (!response.includes("<<FOLLOWUP>>") || !response.includes("<<END_FOLLOWUP>>")) {
+    const fallbacks = FALLBACK_FOLLOWUPS[mode];
+    const idx = Math.min(exchangeCount - 1, fallbacks.length - 1);
+    const fallbackQ = fallbacks[Math.max(0, idx)];
+    return response.trim() + `\n\n<<FOLLOWUP>>${fallbackQ}<<END_FOLLOWUP>>`;
+  }
+
+  return response;
+}
+
+export function getSystemPrompt(mode: AppMode, exchangeCount: number): string {
+  let prompt = SYSTEM_PROMPTS[mode] + MULTI_TURN_INSTRUCTION;
+
+  if (exchangeCount >= 3) {
+    prompt += `\n\nIMPORTANT: This conversation has had ${exchangeCount} user messages. The user has provided enough context through previous follow-ups. Give your FINAL, most comprehensive and personalized answer now. Do NOT include <<FOLLOWUP>> or <<END_FOLLOWUP>> tags. No more questions.`;
+  } else {
+    prompt += `\n\nREMINDER: This is exchange ${exchangeCount} of the conversation. You MUST include <<FOLLOWUP>>...<<END_FOLLOWUP>> tags at the end of your response with a relevant question. Do not forget.`;
+  }
+
+  return prompt;
 }

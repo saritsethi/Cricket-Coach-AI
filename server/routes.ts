@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { getRAGContext, getSystemPrompt } from "./rag";
+import { getRAGContext, getSystemPrompt, enforceFollowUp } from "./rag";
 import OpenAI from "openai";
 import { z } from "zod";
 import type { AppMode } from "@shared/schema";
@@ -85,10 +85,15 @@ export async function registerRoutes(
 
       await storage.createMessage({ conversationId, role: "user", content });
 
-      const ragContext = await getRAGContext(mode, content);
-      const systemPrompt = getSystemPrompt(mode);
-
       const existingMessages = await storage.getMessages(conversationId);
+
+      const userMessages = existingMessages.filter(m => m.role === "user");
+      const allUserContent = userMessages.map(m => m.content).join(" ");
+      const ragContext = await getRAGContext(mode, allUserContent);
+
+      const exchangeCount = Math.floor(existingMessages.filter(m => m.role === "user").length);
+      const systemPrompt = getSystemPrompt(mode, exchangeCount);
+
       const chatHistory: { role: "system" | "user" | "assistant"; content: string }[] = [
         {
           role: "system",
@@ -125,7 +130,16 @@ export async function registerRoutes(
         }
       }
 
-      await storage.createMessage({ conversationId, role: "assistant", content: fullResponse });
+      const enforcedResponse = enforceFollowUp(fullResponse, mode as AppMode, exchangeCount);
+
+      if (enforcedResponse !== fullResponse) {
+        const extra = enforcedResponse.slice(fullResponse.length);
+        if (extra) {
+          res.write(`data: ${JSON.stringify({ content: extra })}\n\n`);
+        }
+      }
+
+      await storage.createMessage({ conversationId, role: "assistant", content: enforcedResponse });
 
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
