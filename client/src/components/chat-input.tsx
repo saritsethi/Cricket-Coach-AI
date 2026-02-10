@@ -1,25 +1,35 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Paperclip, X, Loader2 } from "lucide-react";
+import { Send, Paperclip, X, Loader2, FileImage } from "lucide-react";
+import type { AppMode } from "@shared/schema";
+
+interface AttachedImage {
+  file: File;
+  preview: string;
+  objectPath?: string;
+  uploading: boolean;
+}
 
 interface ChatInputProps {
-  onSend: (message: string, imageUrl?: string) => void;
+  onSend: (message: string, imageUrl?: string, imageUrls?: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
   value?: string;
   onChange?: (value: string) => void;
+  mode?: AppMode;
 }
 
-export function ChatInput({ onSend, disabled, placeholder, value, onChange }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder, value, onChange, mode }: ChatInputProps) {
   const [internalValue, setInternalValue] = useState("");
-  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; objectPath?: string } | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentValue = value !== undefined ? value : internalValue;
   const setCurrentValue = onChange || setInternalValue;
+  const allowMultiple = mode === "captain";
+  const isAnyUploading = attachedImages.some(img => img.uploading);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -28,23 +38,7 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
     }
   }, [currentValue]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      return;
-    }
-
-    const preview = URL.createObjectURL(file);
-    setAttachedImage({ file, preview });
-
-    setIsUploading(true);
+  const uploadFile = async (file: File): Promise<string | null> => {
     try {
       const urlRes = await fetch("/api/uploads/request-url", {
         method: "POST",
@@ -63,30 +57,75 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
         headers: { "Content-Type": file.type },
       });
 
-      setAttachedImage(prev => prev ? { ...prev, objectPath } : null);
+      return objectPath;
     } catch (err) {
       console.error("Upload failed:", err);
-      setAttachedImage(null);
-    } finally {
-      setIsUploading(false);
+      return null;
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    const validFiles = files.filter(f => allowedTypes.includes(f.type) && f.size <= 10 * 1024 * 1024);
+    if (validFiles.length === 0) return;
+
+    const filesToProcess = allowMultiple ? validFiles : [validFiles[0]];
+
+    if (!allowMultiple && attachedImages.length > 0) {
+      attachedImages.forEach(img => URL.revokeObjectURL(img.preview));
+      setAttachedImages([]);
+    }
+
+    const newImages: AttachedImage[] = filesToProcess.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      uploading: true,
+    }));
+
+    setAttachedImages(prev => allowMultiple ? [...prev, ...newImages] : newImages);
+
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const objectPath = await uploadFile(filesToProcess[i]);
+      setAttachedImages(prev =>
+        prev.map(img =>
+          img.file === filesToProcess[i]
+            ? { ...img, objectPath: objectPath || undefined, uploading: false }
+            : img
+        )
+      );
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removeAttachment = () => {
-    if (attachedImage?.preview) {
-      URL.revokeObjectURL(attachedImage.preview);
-    }
-    setAttachedImage(null);
+  const removeAttachment = (index: number) => {
+    setAttachedImages(prev => {
+      const img = prev[index];
+      if (img?.preview) URL.revokeObjectURL(img.preview);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = () => {
-    if ((!currentValue.trim() && !attachedImage) || disabled || isUploading) return;
-    const messageText = currentValue.trim() || "Please analyze this image.";
-    onSend(messageText, attachedImage?.objectPath);
+    if ((!currentValue.trim() && attachedImages.length === 0) || disabled || isAnyUploading) return;
+
+    const messageText = currentValue.trim() || (attachedImages.length > 1 ? "Please analyze these scorecards." : "Please analyze this image.");
+    const uploadedPaths = attachedImages.filter(img => img.objectPath).map(img => img.objectPath!);
+
+    if (uploadedPaths.length > 1) {
+      onSend(messageText, undefined, uploadedPaths);
+    } else if (uploadedPaths.length === 1) {
+      onSend(messageText, uploadedPaths[0]);
+    } else {
+      onSend(messageText);
+    }
+
     setCurrentValue("");
-    removeAttachment();
+    attachedImages.forEach(img => URL.revokeObjectURL(img.preview));
+    setAttachedImages([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -98,31 +137,33 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
 
   return (
     <div className="border-t border-border bg-background">
-      {attachedImage && (
-        <div className="flex items-center gap-2 px-4 pt-3" data-testid="image-preview-container">
-          <div className="relative w-16 h-16 rounded-md overflow-hidden border border-border">
-            <img
-              src={attachedImage.preview}
-              alt="Attached"
-              className="w-full h-full object-cover"
-              data-testid="image-preview"
-            />
-            {isUploading && (
-              <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              </div>
-            )}
-            <button
-              onClick={removeAttachment}
-              className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
-              data-testid="button-remove-attachment"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-            {attachedImage.file.name}
-          </span>
+      {attachedImages.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3" data-testid="image-preview-container">
+          {attachedImages.map((img, i) => (
+            <div key={i} className="relative w-16 h-16 rounded-md overflow-hidden border border-border">
+              <img
+                src={img.preview}
+                alt={`Attached ${i + 1}`}
+                className="w-full h-full object-cover"
+                data-testid={`image-preview-${i}`}
+              />
+              {img.uploading && (
+                <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                </div>
+              )}
+              <button
+                onClick={() => removeAttachment(i)}
+                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                data-testid={`button-remove-attachment-${i}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {attachedImages.length > 1 && (
+            <span className="text-xs text-muted-foreground">{attachedImages.length} scorecards</span>
+          )}
         </div>
       )}
       <div className="flex items-end gap-2 p-4">
@@ -130,6 +171,7 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
           ref={fileInputRef}
           type="file"
           accept="image/jpeg,image/png,image/gif,image/webp"
+          multiple={allowMultiple}
           onChange={handleFileSelect}
           className="hidden"
           data-testid="input-file-upload"
@@ -138,10 +180,11 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
           size="icon"
           variant="ghost"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || isUploading}
+          disabled={disabled || isAnyUploading}
           data-testid="button-attach-image"
+          title={allowMultiple ? "Attach scorecards" : "Attach image"}
         >
-          <Paperclip className="w-4 h-4" />
+          {allowMultiple ? <FileImage className="w-4 h-4" /> : <Paperclip className="w-4 h-4" />}
         </Button>
         <Textarea
           ref={textareaRef}
@@ -156,7 +199,7 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange }: Ch
         />
         <Button
           onClick={handleSubmit}
-          disabled={disabled || isUploading || (!currentValue.trim() && !attachedImage)}
+          disabled={disabled || isAnyUploading || (!currentValue.trim() && attachedImages.length === 0)}
           size="icon"
           data-testid="button-send-message"
         >

@@ -148,26 +148,55 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type AppMode = "captain" | "skills" | "equipment";
 
-export const PRE_CANNED_PROMPTS: Record<AppMode, { label: string; prompt: string; icon: string }[]> = {
+const ALL_PROMPTS: Record<AppMode, { label: string; prompt: string; icon: string }[]> = {
   captain: [
-    { label: "Field placement for death overs", prompt: "What are the best field placements for the death overs when defending a total of 160 in a T20 match? Consider the batter's strengths and recent scoring patterns.", icon: "target" },
-    { label: "Bowling strategy against left-handers", prompt: "Suggest a bowling strategy against left-handed batters in powerplay overs. Include field positions, bowling lengths, and line variations.", icon: "zap" },
-    { label: "Chase strategy for run targets", prompt: "How should a captain plan a run chase of 180 in a T20? Include powerplay approach, middle overs strategy, and death overs acceleration plan.", icon: "trending-up" },
-    { label: "Spin bowling tactics on turning pitch", prompt: "What bowling changes and field adjustments should a captain make when the pitch starts turning in the middle overs of an ODI match?", icon: "rotate-ccw" },
-    { label: "DLS method situation planning", prompt: "How should a captain adjust strategy when rain is expected during a chase? Consider DLS par scores and batting approach for different stages.", icon: "cloud-rain" },
+    { label: "Field placement for death overs", prompt: "What are the best field placements for the death overs when defending a total of 160 in a T20 match?", icon: "target" },
+    { label: "Bowling strategy against left-handers", prompt: "Suggest a bowling strategy against left-handed batters in powerplay overs.", icon: "zap" },
+    { label: "Chase strategy for run targets", prompt: "How should a captain plan a run chase of 180 in a T20?", icon: "trending-up" },
+    { label: "Spin bowling tactics on turning pitch", prompt: "What bowling changes and field adjustments should I make when the pitch starts turning?", icon: "rotate-ccw" },
+    { label: "DLS method situation planning", prompt: "How should I adjust strategy when rain is expected during a chase?", icon: "cloud-rain" },
+    { label: "Powerplay bowling plan", prompt: "What's the best bowling plan for the first 6 overs in a T20?", icon: "zap" },
+    { label: "Setting a batting order", prompt: "How should I structure my batting order for a 200+ run chase?", icon: "trending-up" },
+    { label: "Middle overs pressure tactics", prompt: "How do I maintain pressure through the middle overs with spin and medium pace?", icon: "target" },
+    { label: "Handling a collapse", prompt: "What tactical changes should I make when we lose 3 quick wickets?", icon: "shield" },
+    { label: "Part-time bowler usage", prompt: "When and how should I use part-time bowlers effectively?", icon: "rotate-ccw" },
+    { label: "New ball strategy", prompt: "What's the best approach with the new ball in an ODI opening spell?", icon: "zap" },
+    { label: "Defending a low total", prompt: "How do I set fields and rotate bowlers when defending under 140 in a T20?", icon: "target" },
   ],
   skills: [
-    { label: "Improve cover drive technique", prompt: "Analyze the cover drive technique. What are the key elements of a perfect cover drive? Include foot position, bat swing, head position, and common mistakes to avoid.", icon: "swords" },
-    { label: "Fast bowling action analysis", prompt: "Break down the biomechanics of a fast bowling action. What elements contribute to generating pace while minimizing injury risk?", icon: "flame" },
-    { label: "Playing spin effectively", prompt: "How can a batter improve their technique against spin bowling? Cover footwork, use of crease, reading the ball out of the hand, and sweep shot variations.", icon: "eye" },
-    { label: "Fielding drills for slip catching", prompt: "What are the best drills and techniques for improving slip catching? Include reaction training, hand positioning, and concentration exercises.", icon: "hand" },
-    { label: "Power hitting in death overs", prompt: "Analyze the techniques used by top T20 batters for power hitting in death overs. Cover bat speed, swing path, clearing the front leg, and shot selection.", icon: "zap" },
+    { label: "Improve cover drive technique", prompt: "How do I improve my cover drive? I keep getting out playing it.", icon: "swords" },
+    { label: "Fast bowling action analysis", prompt: "What are the key elements of a good fast bowling action to generate pace safely?", icon: "flame" },
+    { label: "Playing spin effectively", prompt: "How can I improve my technique against spin bowling?", icon: "eye" },
+    { label: "Slip catching drills", prompt: "What drills can improve my slip catching reactions?", icon: "hand" },
+    { label: "Power hitting technique", prompt: "How do T20 batters generate power in their shots? What drills help?", icon: "zap" },
+    { label: "Bowling yorkers consistently", prompt: "How do I practice bowling yorkers more consistently?", icon: "flame" },
+    { label: "Playing the short ball", prompt: "I struggle against bouncers. How do I improve my short ball technique?", icon: "swords" },
+    { label: "Running between wickets", prompt: "How can I improve my running between wickets and calling?", icon: "footprints" },
+    { label: "Building an innings", prompt: "How do I build a longer innings instead of getting out after a start?", icon: "trending-up" },
+    { label: "Reverse swing bowling", prompt: "What technique and ball management is needed for reverse swing?", icon: "flame" },
+    { label: "Wicketkeeping footwork", prompt: "What drills improve wicketkeeping footwork and positioning?", icon: "hand" },
+    { label: "Mental game under pressure", prompt: "How do I stay focused and handle pressure in important match situations?", icon: "eye" },
   ],
   equipment: [
-    { label: "Best bats for power hitting", prompt: "Compare the top cricket bats suited for power hitting in T20 cricket. Consider willow grade, sweet spot position, pick-up weight, and durability.", icon: "award" },
-    { label: "Choosing the right cricket shoes", prompt: "What factors should a cricketer consider when choosing cricket shoes? Cover spike types, ankle support, weight, and suitability for different surfaces.", icon: "footprints" },
-    { label: "Protective gear guide", prompt: "Provide a comprehensive guide to cricket protective gear including helmets, pads, gloves, and guards. What standards should each piece meet?", icon: "shield" },
-    { label: "Bowling machine comparison", prompt: "Compare popular bowling machines for practice. Consider speed range, ball types, programmability, and value for money at different skill levels.", icon: "settings" },
-    { label: "Ball selection for different conditions", prompt: "How do different cricket balls (Kookaburra, Dukes, SG) behave in various conditions? What should teams consider when choosing match balls?", icon: "circle" },
+    { label: "Best bats for power hitting", prompt: "What are the best cricket bats for power hitting in T20 cricket?", icon: "award" },
+    { label: "Choosing cricket shoes", prompt: "What should I look for when choosing cricket shoes for different surfaces?", icon: "footprints" },
+    { label: "Protective gear guide", prompt: "What protective gear do I need and what standards should each piece meet?", icon: "shield" },
+    { label: "Bowling machine comparison", prompt: "Which bowling machines are best for practice at different skill levels?", icon: "settings" },
+    { label: "Ball selection guide", prompt: "How do different cricket balls (Kookaburra, Dukes, SG) compare?", icon: "circle" },
+    { label: "Bat weight and balance", prompt: "How do I choose the right bat weight and balance for my style?", icon: "award" },
+    { label: "Gloves for different conditions", prompt: "What batting gloves work best in hot vs cold conditions?", icon: "hand" },
+    { label: "Helmet safety standards", prompt: "What safety standards should I look for in a cricket helmet?", icon: "shield" },
+    { label: "Kit bag essentials", prompt: "What should every cricketer have in their kit bag?", icon: "settings" },
+    { label: "Bat care and maintenance", prompt: "How do I properly knock in and maintain my cricket bat?", icon: "award" },
+    { label: "Training aids that work", prompt: "What training aids actually help improve cricket skills?", icon: "settings" },
+    { label: "Budget gear recommendations", prompt: "What's the best cricket equipment for someone on a tight budget?", icon: "circle" },
   ],
 };
+
+export function getRandomPrompts(mode: AppMode, count: number = 5): { label: string; prompt: string; icon: string }[] {
+  const all = [...ALL_PROMPTS[mode]];
+  const shuffled = all.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+export const PRE_CANNED_PROMPTS = ALL_PROMPTS;

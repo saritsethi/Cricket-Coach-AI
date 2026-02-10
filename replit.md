@@ -15,17 +15,19 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 - **File Storage**: Replit App Storage (Object Storage) for image uploads via presigned URLs
 
 ## Key Files
-- `shared/schema.ts` - All data models (matches, deliveries, players, equipment, conversations, messages with imageUrl)
-- `server/routes.ts` - API endpoints including streaming chat with vision model support
-- `server/rag.ts` - RAG orchestration layer with mode-based context retrieval, citation/reference enforcement
+- `shared/schema.ts` - All data models, prompt pools with `getRandomPrompts()` for dynamic selection
+- `server/routes.ts` - API endpoints including streaming chat with vision model and multi-image support
+- `server/rag.ts` - RAG orchestration layer with mode-based context retrieval, citation/reference enforcement, output format rules
 - `server/storage.ts` - Database CRUD operations
 - `server/seed.ts` - Cricket data seeding
 - `server/db.ts` - Database connection
 - `server/replit_integrations/object_storage/` - File upload via presigned URLs
 - `client/src/App.tsx` - Main app with sidebar layout
-- `client/src/pages/chat.tsx` - Chat interface with streaming and image upload support
-- `client/src/components/chat-input.tsx` - Chat input with image attachment (paperclip button)
+- `client/src/pages/chat.tsx` - Chat interface with streaming, image upload, and context injection
+- `client/src/components/chat-input.tsx` - Chat input with multi-image attachment (captain mode supports multiple scorecards)
 - `client/src/components/chat-message.tsx` - Message rendering with image display, citations, references, follow-ups
+- `client/src/components/context-panel.tsx` - Captain context (squad/opponent) and Skills profile (batting/bowling style, handedness) panels
+- `client/src/components/prompt-suggestions.tsx` - Dynamic randomized prompt suggestions with refresh button
 
 ## Database Tables
 - `matches` - Match scorecards (title, teams, venue, scores, result)
@@ -40,7 +42,7 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 - `GET /api/conversations/:id` - Get conversation with messages
 - `POST /api/conversations` - Create conversation
 - `DELETE /api/conversations/:id` - Delete conversation
-- `POST /api/chat/:conversationId/messages` - Send message with optional imageUrl (SSE streaming response)
+- `POST /api/chat/:conversationId/messages` - Send message with optional imageUrl/imageUrls (SSE streaming response)
 - `POST /api/uploads/request-url` - Get presigned URL for image upload
 - `GET /objects/*` - Serve uploaded files from object storage
 - `GET /api/matches` - List matches
@@ -49,37 +51,52 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 
 ## RAG Orchestration
 The RAG layer (`server/rag.ts`) queries different database sections based on the active mode:
-- **Captain mode**: Retrieves match data, ball-by-ball analysis, bowling figures, field positions
+- **Captain mode**: Retrieves match data, ball-by-ball analysis, bowling figures, field positions (fallback: returns all matches if keyword search fails)
 - **Skills mode**: Retrieves player technique profiles, player images, delivery data filtered by shot/delivery types
-- **Equipment mode**: Retrieves equipment reviews, specs, comparisons, and player profiles for equipment context
+- **Equipment mode**: Retrieves equipment reviews, specs, comparisons, and player profiles (fallback: returns all equipment if keyword search fails)
 
 RAG context uses full conversation history (all user messages) for keyword extraction, so each follow-up response pulls progressively more relevant data.
+
+## Dynamic Starter Prompts
+- 12+ prompts per mode defined in `shared/schema.ts` (ALL_PROMPTS)
+- `getRandomPrompts(mode, count)` shuffles and returns a subset each time
+- PromptSuggestions component uses `useMemo` with a `refreshKey` state for re-randomization
+- "Show different suggestions" button lets users refresh without page reload
+
+## Context Panels (localStorage-backed)
+- **Captain Context**: Squad details, opponent info, match format - stored in localStorage under `cricketiq_captain_context`
+- **Skills Profile**: Handedness, role, batting style, bowling style, level - stored under `cricketiq_skills_profile`
+- Context is automatically prepended to user messages as `[CAPTAIN CONTEXT]` or `[PLAYER PROFILE]` tags
+- System prompts instruct AI to use this context for personalization without re-asking
+
+## Multi-Scorecard Upload (Captain Mode)
+- Captain mode allows multiple image uploads (file input has `multiple` attribute)
+- All images uploaded via presigned URL flow in parallel
+- Multiple `imageUrls` sent to server, which includes all as `image_url` content parts for the vision model
+- System prompt includes scorecard analysis instructions for pattern identification across matches
+
+## Output Format Rules
+- All modes use short, actionable output format: "What's Working / What Needs Improvement / Next Steps"
+- Users can ask for "more detail" to get longer responses
+- Skills mode ALWAYS includes at least 2 specific drills with names, descriptions, and sets/reps
 
 ## Multi-Turn Conversation System
 The AI provides useful advice in every response and asks follow-up questions for the first 2-3 exchanges to gather more context, then gives a final comprehensive answer:
 - System prompts instruct AI to use `<<FOLLOWUP>>...<<END_FOLLOWUP>>` tags for follow-up questions
 - Server-side enforcement (`enforceFollowUp()` in `server/rag.ts`) guarantees tags are present for exchanges 1-2 and stripped for exchange 3+, with mode-specific fallback questions
 - `ChatMessage` component (`client/src/components/chat-message.tsx`) parses tags and renders follow-up questions in a visually distinct section with HelpCircle icon and primary-colored text
-- Exchange count is tracked per conversation based on the number of user messages
-- Client optimistically adds the final streamed content to the query cache before clearing streaming state, ensuring seamless follow-up rendering
 
 ## Image Upload & Vision Analysis
-- Users attach images via a paperclip button in the chat input (accepts JPEG, PNG, GIF, WebP up to 10MB)
-- Files upload to Replit App Storage via presigned URL flow (POST metadata to /api/uploads/request-url, then PUT file to presigned URL)
-- When images are present in a conversation, the backend switches from gpt-5-mini to gpt-4o (vision model)
-- Images are sent as multi-part content (text + image_url) to the OpenAI API
-- System prompt adds detailed technique analysis instructions when images are detected
-- ChatMessage renders user-attached images inline above message text
+- Users attach images via a paperclip button (single in skills/equipment, multiple scorecards in captain mode)
+- Accepts JPEG, PNG, GIF, WebP up to 10MB each
+- Files upload to Replit App Storage via presigned URL flow
+- When images are present, backend switches from gpt-5-mini to gpt-4o (vision model)
+- Images sent as multi-part content (text + image_url) to the OpenAI API
 
 ## Match Citations (Captain Mode)
-- System prompt instructs AI to include `<<CITATION>>...<<END_CITATION>>` tags when referencing match data
-- Server-side enforcement (`enforceCitations()`) injects fallback citations from RAG context if the AI omits them
-- ChatMessage parses citation tags and renders them as styled cards with match name, teams, and result details
-- Citations appear in a "Match References" section with BookOpen icon
+- Server-side enforcement (`enforceCitations()`) injects fallback citations from RAG context if AI omits them
+- ChatMessage parses `<<CITATION>>...<<END_CITATION>>` tags and renders styled cards
 
 ## Equipment References (Equipment Mode)
-- System prompt instructs AI to reference pro player equipment choices and include YouTube review links
-- Equipment RAG now also retrieves player profiles for equipment context (what pros use)
-- System prompt instructs AI to include `<<REFERENCE>>...<<END_REFERENCE>>` tags with markdown links
-- Server-side enforcement (`enforceReferences()`) injects fallback YouTube search links from RAG equipment data if the AI omits them
-- ChatMessage parses reference tags and renders clickable links with YouTube (Play icon) or article (ExternalLink icon) styling
+- Server-side enforcement (`enforceReferences()`) injects fallback YouTube search links if AI omits them
+- ChatMessage parses `<<REFERENCE>>...<<END_REFERENCE>>` tags and renders clickable links

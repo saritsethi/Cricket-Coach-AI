@@ -9,6 +9,13 @@ interface ChatMessageProps {
   isStreaming?: boolean;
 }
 
+function stripContextTags(text: string): string {
+  return text
+    .replace(/^\[CAPTAIN CONTEXT\][^\n]*\n\n/g, "")
+    .replace(/^\[PLAYER PROFILE\][^\n]*\n\n/g, "")
+    .trim();
+}
+
 function parseFollowUp(text: string): { mainContent: string; followUp: string | null } {
   const match = text.match(/<<FOLLOWUP>>([\s\S]*?)<<END_FOLLOWUP>>/);
   if (match) {
@@ -72,7 +79,7 @@ function parseReferences(text: string): { cleanText: string; references: Referen
 export function ChatMessage({ role, content, imageUrl, isStreaming }: ChatMessageProps) {
   const isUser = role === "user";
 
-  let mainContent = content;
+  let mainContent = isUser ? stripContextTags(content) : content;
   let followUp: string | null = null;
   let citations: Citation[] = [];
   let references: Reference[] = [];

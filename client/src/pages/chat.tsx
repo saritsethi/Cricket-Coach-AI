@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { PromptSuggestions } from "@/components/prompt-suggestions";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ContextPanel, getCaptainContextString, getSkillsProfileString } from "@/components/context-panel";
 import { Crown, Swords, ShieldCheck } from "lucide-react";
 import type { AppMode, Message, Conversation } from "@shared/schema";
 
@@ -52,8 +52,16 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
     }
   }, [messages, streamingContent]);
 
-  const sendMessage = useCallback(async (content: string, imageUrl?: string) => {
+  const sendMessage = useCallback(async (content: string, imageUrl?: string, imageUrls?: string[]) => {
     let currentConvId = conversationId;
+
+    let contextPrefix = "";
+    if (mode === "captain") {
+      contextPrefix = getCaptainContextString();
+    } else if (mode === "skills") {
+      contextPrefix = getSkillsProfileString();
+    }
+    const fullContent = contextPrefix ? `${contextPrefix}\n\n${content}` : content;
 
     if (!currentConvId) {
       const res = await apiRequest("POST", "/api/conversations", {
@@ -84,7 +92,7 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
       const response = await fetch(`/api/chat/${currentConvId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, mode, imageUrl }),
+        body: JSON.stringify({ content: fullContent, mode, imageUrl, imageUrls }),
       });
 
       if (!response.ok) throw new Error("Failed to send message");
@@ -180,12 +188,14 @@ export function ChatPage({ mode, conversationId, onConversationCreated }: ChatPa
         )}
       </div>
       <div className="max-w-4xl mx-auto w-full">
+        <ContextPanel mode={mode} />
         <ChatInput
           onSend={sendMessage}
           disabled={isStreaming}
           value={inputValue}
           onChange={setInputValue}
-          placeholder={`Ask about ${config.label.toLowerCase()}...`}
+          placeholder={mode === "captain" ? "Ask about strategy or upload scorecards..." : `Ask about ${config.label.toLowerCase()}...`}
+          mode={mode}
         />
       </div>
     </div>

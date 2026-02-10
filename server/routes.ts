@@ -16,6 +16,7 @@ const sendMessageSchema = z.object({
   content: z.string().min(1).max(10000),
   mode: z.enum(["captain", "skills", "equipment"]),
   imageUrl: z.string().optional(),
+  imageUrls: z.array(z.string()).optional(),
 });
 
 const openai = new OpenAI({
@@ -83,9 +84,12 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const { content, mode, imageUrl } = parsed.data;
+      const { content, mode, imageUrl, imageUrls } = parsed.data;
 
-      await storage.createMessage({ conversationId, role: "user", content, imageUrl: imageUrl || null });
+      const allImageUrls = imageUrls && imageUrls.length > 0 ? imageUrls : (imageUrl ? [imageUrl] : []);
+      const primaryImageUrl = allImageUrls[0] || null;
+
+      await storage.createMessage({ conversationId, role: "user", content, imageUrl: primaryImageUrl });
 
       const existingMessages = await storage.getMessages(conversationId);
 
@@ -93,7 +97,7 @@ export async function registerRoutes(
       const allUserContent = userMessages.map(m => m.content).join(" ");
       const ragContext = await getRAGContext(mode, allUserContent);
 
-      const hasImage = existingMessages.some(m => m.imageUrl);
+      const hasImage = existingMessages.some(m => m.imageUrl) || allImageUrls.length > 0;
       const exchangeCount = Math.floor(existingMessages.filter(m => m.role === "user").length);
       const systemPrompt = getSystemPrompt(mode, exchangeCount, hasImage);
 
@@ -106,16 +110,19 @@ export async function registerRoutes(
       ];
 
       const recentMessages = existingMessages.slice(-10);
-      recentMessages.forEach(m => {
-        if (m.imageUrl && m.role === "user") {
-          const imageAbsoluteUrl = `${req.protocol}://${req.get("host")}${m.imageUrl}`;
-          chatHistory.push({
-            role: "user",
-            content: [
-              { type: "text", text: m.content },
-              { type: "image_url", image_url: { url: imageAbsoluteUrl } },
-            ],
+      recentMessages.forEach((m, idx) => {
+        const isLastUserMsg = m.role === "user" && idx === recentMessages.length - 1;
+        const msgImageUrls = isLastUserMsg && allImageUrls.length > 1 ? allImageUrls : (m.imageUrl ? [m.imageUrl] : []);
+
+        if (msgImageUrls.length > 0 && m.role === "user") {
+          const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+            { type: "text", text: m.content },
+          ];
+          msgImageUrls.forEach(url => {
+            const imageAbsoluteUrl = `${req.protocol}://${req.get("host")}${url}`;
+            contentParts.push({ type: "image_url", image_url: { url: imageAbsoluteUrl } });
           });
+          chatHistory.push({ role: "user", content: contentParts });
         } else {
           chatHistory.push({
             role: m.role as "user" | "assistant",
