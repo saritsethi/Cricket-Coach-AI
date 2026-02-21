@@ -18,6 +18,7 @@ export async function seedDatabase() {
       matchDate: "2024-11-15", matchType: "T20I",
       result: "India won by 6 wickets", tossWinner: "Australia", tossDecision: "bat",
       team1Score: "164/4 (18.5 ov)", team2Score: "160/8 (20 ov)",
+      scorecardUrl: "https://www.espncricinfo.com/series/australia-tour-of-india-2024-25-1439778/india-vs-australia-1st-t20i-1439791/full-scorecard",
     },
     {
       matchTitle: "England vs South Africa - ICC World Cup Semi-Final",
@@ -25,6 +26,7 @@ export async function seedDatabase() {
       matchDate: "2024-03-22", matchType: "ODI",
       result: "England won by 3 wickets", tossWinner: "England", tossDecision: "field",
       team1Score: "282/7 (49.2 ov)", team2Score: "279/8 (50 ov)",
+      scorecardUrl: "https://www.espncricinfo.com/series/icc-cricket-world-cup-2023-24-1367856/england-vs-south-africa-semi-final-1367927/full-scorecard",
     },
     {
       matchTitle: "Australia vs Pakistan - 2nd Test 2024",
@@ -32,6 +34,7 @@ export async function seedDatabase() {
       matchDate: "2024-12-10", matchType: "Test",
       result: "Australia won by an innings and 48 runs", tossWinner: "Australia", tossDecision: "bat",
       team1Score: "462/7d", team2Score: "198 & 216",
+      scorecardUrl: "https://www.espncricinfo.com/series/pakistan-tour-of-australia-2024-25-1443268/australia-vs-pakistan-2nd-test-1443277/full-scorecard",
     },
     {
       matchTitle: "Mumbai Indians vs Chennai Super Kings - IPL Final",
@@ -39,6 +42,7 @@ export async function seedDatabase() {
       matchDate: "2024-05-26", matchType: "T20",
       result: "Mumbai Indians won by 5 wickets", tossWinner: "Chennai Super Kings", tossDecision: "bat",
       team1Score: "173/5 (19.4 ov)", team2Score: "170/6 (20 ov)",
+      scorecardUrl: "https://www.espncricinfo.com/series/indian-premier-league-2024-1410320/mumbai-indians-vs-chennai-super-kings-final-1422146/full-scorecard",
     },
   ];
 

@@ -8,10 +8,11 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 
 ## Architecture
 - **Frontend**: React + TypeScript + Vite, Tailwind CSS, shadcn/ui components
-- **Backend**: Express.js with streaming SSE for AI chat
+- **Backend**: Express.js with streaming SSE for AI chat, cookie-based session auth
 - **Database**: PostgreSQL with Drizzle ORM
+- **Auth**: Name + email registration (no password), cookie-based sessions, duplicate emails rejected
 - **AI**: OpenAI via Replit AI Integrations (gpt-5-mini for text, gpt-4o for vision/image analysis)
-- **RAG System**: Mode-based context retrieval from cricket database
+- **RAG System**: Mode-based context retrieval from cricket database with scorecard URLs
 - **File Storage**: Replit App Storage (Object Storage) for image uploads via presigned URLs
 
 ## Key Files
@@ -22,7 +23,8 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 - `server/seed.ts` - Cricket data seeding
 - `server/db.ts` - Database connection
 - `server/replit_integrations/object_storage/` - File upload via presigned URLs
-- `client/src/App.tsx` - Main app with sidebar layout
+- `client/src/App.tsx` - Main app with auth gate and sidebar layout
+- `client/src/pages/auth.tsx` - Registration and login page
 - `client/src/pages/chat.tsx` - Chat interface with streaming, image upload, and context injection
 - `client/src/components/chat-input.tsx` - Chat input with multi-image attachment (captain mode supports multiple scorecards)
 - `client/src/components/chat-message.tsx` - Message rendering with image display, citations, references, follow-ups
@@ -38,11 +40,15 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 - `messages` - Chat messages (with optional imageUrl for attached images)
 
 ## API Routes
-- `GET /api/conversations` - List conversations
-- `GET /api/conversations/:id` - Get conversation with messages
-- `POST /api/conversations` - Create conversation
-- `DELETE /api/conversations/:id` - Delete conversation
-- `POST /api/chat/:conversationId/messages` - Send message with optional imageUrl/imageUrls (SSE streaming response)
+- `POST /api/auth/register` - Register with name + email, returns session cookie
+- `POST /api/auth/login` - Login with email, returns session cookie
+- `POST /api/auth/logout` - Clear session
+- `GET /api/auth/me` - Get current authenticated user
+- `GET /api/conversations` - List conversations (filtered by authenticated user)
+- `GET /api/conversations/:id` - Get conversation with messages (auth required, user-scoped)
+- `POST /api/conversations` - Create conversation (auto-tagged to user)
+- `DELETE /api/conversations/:id` - Delete conversation (auth required, user-scoped)
+- `POST /api/chat/:conversationId/messages` - Send message with optional imageUrl/imageUrls (SSE streaming response, auth required)
 - `POST /api/uploads/request-url` - Get presigned URL for image upload
 - `GET /objects/*` - Serve uploaded files from object storage
 - `GET /api/matches` - List matches

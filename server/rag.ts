@@ -33,6 +33,7 @@ async function getCaptainContext(query: string): Promise<string> {
       parts.push(`Teams: ${match.team1} vs ${match.team2} | Type: ${match.matchType}`);
       parts.push(`Venue: ${match.venue} | Date: ${match.matchDate}`);
       parts.push(`Result: ${match.result}`);
+      if (match.scorecardUrl) parts.push(`Scorecard: ${match.scorecardUrl}`);
       if (match.tossWinner) parts.push(`Toss: ${match.tossWinner} won, chose to ${match.tossDecision}`);
       if (match.team1Score) parts.push(`${match.team1}: ${match.team1Score}`);
       if (match.team2Score) parts.push(`${match.team2}: ${match.team2Score}`);
@@ -247,14 +248,21 @@ SCORECARD ANALYSIS: When the user uploads one or more scorecards:
 3. Compare across multiple scorecards if provided to find patterns
 4. Provide tactical recommendations for future matches based on the analysis
 
-MATCH CITATIONS: When you reference relevant match situations from the provided data, include them at the END of your response using this EXACT format:
+MATCH CITATIONS: When you reference relevant match situations from the provided data, you MUST include them at the END of your response using this EXACT format:
 
 <<CITATION>>
 Match Title (e.g., "India vs Australia, T20 World Cup 2024")
 Key details: what happened, result, and why it's relevant
+Scorecard: [Full Scorecard](URL_FROM_DATA)
 <<END_CITATION>>
 
-Include 1-3 citations per response when relevant match data is available. Place ALL citations BEFORE the <<FOLLOWUP>> tag if one exists.`,
+CRITICAL RULES FOR CITATIONS:
+- ALWAYS include the scorecard URL link when one is provided in the match data (look for "Scorecard:" lines).
+- Format the URL as a markdown link: [Full Scorecard](url)
+- If no scorecard URL is in the data, generate one using this pattern: https://www.espncricinfo.com/search?q=TEAM1+vs+TEAM2+YEAR
+- Include 1-3 citations per response when relevant match data is available.
+- Place ALL citations BEFORE the <<FOLLOWUP>> tag if one exists.
+- NEVER cite a match without providing a URL link.`,
 
   skills: `You are CricketIQ Skill Building Coach, an expert cricket technique analyst and coach. You help cricketers with:
 - Batting technique analysis (stance, grip, footwork, shot execution)
@@ -340,24 +348,31 @@ export function enforceCitations(response: string, mode: AppMode, ragContext: st
       const matchLines = ragContext.split("\n");
       const matchTitles: string[] = [];
       const matchDetails: string[] = [];
+      const matchUrls: string[] = [];
       for (let i = 0; i < matchLines.length; i++) {
         if (matchLines[i].startsWith("Match: ")) {
           matchTitles.push(matchLines[i].replace("Match: ", ""));
           const detailParts: string[] = [];
-          for (let j = i + 1; j < Math.min(i + 5, matchLines.length); j++) {
+          let url = "";
+          for (let j = i + 1; j < Math.min(i + 8, matchLines.length); j++) {
             if (matchLines[j].startsWith("Result: ")) {
               detailParts.push(matchLines[j]);
             }
             if (matchLines[j].startsWith("Teams: ")) {
               detailParts.push(matchLines[j]);
             }
+            if (matchLines[j].startsWith("Scorecard: ")) {
+              url = matchLines[j].replace("Scorecard: ", "");
+            }
           }
           matchDetails.push(detailParts.join(" | "));
+          matchUrls.push(url);
         }
       }
       if (matchTitles.length > 0) {
         const citations = matchTitles.slice(0, 2).map((title, i) => {
-          return `\n\n<<CITATION>>\n${title}\n${matchDetails[i] || "Relevant match from database"}\n<<END_CITATION>>`;
+          const urlLine = matchUrls[i] ? `\nScorecard: [Full Scorecard](${matchUrls[i]})` : "";
+          return `\n\n<<CITATION>>\n${title}\n${matchDetails[i] || "Relevant match from database"}${urlLine}\n<<END_CITATION>>`;
         });
         const followUpIdx = response.indexOf("<<FOLLOWUP>>");
         if (followUpIdx > -1) {

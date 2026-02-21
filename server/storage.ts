@@ -14,8 +14,10 @@ import { eq, desc, and, ilike, or, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserBySessionToken(token: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserSessionToken(id: string, token: string | null): Promise<void>;
 
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
@@ -39,7 +41,7 @@ export interface IStorage {
   createEquipment(item: InsertEquipment): Promise<Equipment>;
   searchEquipment(query: string): Promise<Equipment[]>;
 
-  getConversations(): Promise<Conversation[]>;
+  getConversations(userId?: string): Promise<Conversation[]>;
   getConversation(id: number): Promise<Conversation | undefined>;
   createConversation(conv: InsertConversation): Promise<Conversation>;
   deleteConversation(id: number): Promise<void>;
@@ -53,13 +55,20 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
-  async getUserByUsername(username: string) {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+  async getUserByEmail(email: string) {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+  async getUserBySessionToken(token: string) {
+    const [user] = await db.select().from(users).where(eq(users.sessionToken, token));
     return user;
   }
   async createUser(user: InsertUser) {
     const [created] = await db.insert(users).values(user).returning();
     return created;
+  }
+  async updateUserSessionToken(id: string, token: string | null) {
+    await db.update(users).set({ sessionToken: token }).where(eq(users.id, id));
   }
 
   async getMatches() {
@@ -165,7 +174,10 @@ export class DatabaseStorage implements IStorage {
     ).limit(20);
   }
 
-  async getConversations() {
+  async getConversations(userId?: string) {
+    if (userId) {
+      return db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(desc(conversations.createdAt));
+    }
     return db.select().from(conversations).orderBy(desc(conversations.createdAt));
   }
   async getConversation(id: number) {

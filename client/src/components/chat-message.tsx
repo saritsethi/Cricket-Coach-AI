@@ -29,6 +29,7 @@ function parseFollowUp(text: string): { mainContent: string; followUp: string | 
 interface Citation {
   match: string;
   detail: string;
+  url: string | null;
 }
 
 function parseCitations(text: string): { cleanText: string; citations: Citation[] } {
@@ -38,14 +39,49 @@ function parseCitations(text: string): { cleanText: string; citations: Citation[
   while ((match = regex.exec(text)) !== null) {
     const lines = match[1].trim().split("\n").map(l => l.trim()).filter(Boolean);
     if (lines.length >= 1) {
+      let url: string | null = null;
+      const detailLines: string[] = [];
+      for (const line of lines.slice(1)) {
+        const urlMatch = line.match(/\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+        const plainUrlMatch = line.match(/(?:Scorecard|URL|Link):\s*(https?:\/\/[^\s]+)/i);
+        if (urlMatch) {
+          url = urlMatch[1];
+        } else if (plainUrlMatch) {
+          url = plainUrlMatch[1];
+        } else {
+          detailLines.push(line);
+        }
+      }
       citations.push({
         match: lines[0],
-        detail: lines.slice(1).join(" "),
+        detail: detailLines.join(" "),
+        url,
       });
     }
   }
   const cleanText = text.replace(/<<CITATION>>[\s\S]*?<<END_CITATION>>/g, "").trim();
   return { cleanText, citations };
+}
+
+function renderWithLinks(text: string) {
+  const parts = text.split(/(\[.*?\]\(.*?\))/g);
+  return parts.map((part, i) => {
+    const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
+    if (linkMatch) {
+      return (
+        <a
+          key={i}
+          href={linkMatch[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          {linkMatch[1]}
+        </a>
+      );
+    }
+    return part;
+  });
 }
 
 interface Reference {
@@ -144,7 +180,21 @@ export function ChatMessage({ role, content, imageUrl, isStreaming }: ChatMessag
                   <Card key={i} className="p-3" data-testid={`citation-card-${i}`}>
                     <div className="text-sm font-medium">{c.match}</div>
                     {c.detail && (
-                      <div className="text-xs text-muted-foreground mt-1">{c.detail}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {renderWithLinks(c.detail)}
+                      </div>
+                    )}
+                    {c.url && (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-2"
+                        data-testid={`citation-link-${i}`}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        View Full Scorecard
+                      </a>
                     )}
                   </Card>
                 ))}

@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/sidebar";
 import { ModeSelector } from "./mode-selector";
 import { ConversationList } from "./conversation-list";
+import { LogOut, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Conversation, AppMode } from "@shared/schema";
 
 interface AppSidebarProps {
@@ -21,6 +23,8 @@ interface AppSidebarProps {
   onNewConversation: () => void;
   onDeleteConversation: (id: number) => void;
   isLoading: boolean;
+  userName?: string;
+  onLogout?: () => void;
 }
 
 export function AppSidebar({
@@ -32,6 +36,8 @@ export function AppSidebar({
   onNewConversation,
   onDeleteConversation,
   isLoading,
+  userName,
+  onLogout,
 }: AppSidebarProps) {
   return (
     <Sidebar>
@@ -71,9 +77,30 @@ export function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-3">
-        <div className="text-xs text-muted-foreground text-center">
-          Powered by AI Cricket Analytics
-        </div>
+        {userName && onLogout ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground truncate" data-testid="text-sidebar-user">
+                {userName}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={onLogout}
+              data-testid="button-sidebar-logout"
+              title="Sign out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground text-center">
+            Powered by AI Cricket Analytics
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

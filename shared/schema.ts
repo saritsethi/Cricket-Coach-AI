@@ -5,13 +5,15 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  sessionToken: text("session_token"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+  name: true,
+  email: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -30,6 +32,7 @@ export const matches = pgTable("matches", {
   tossDecision: text("toss_decision"),
   team1Score: text("team1_score"),
   team2Score: text("team2_score"),
+  scorecardUrl: text("scorecard_url"),
 });
 
 export const insertMatchSchema = createInsertSchema(matches).omit({ id: true });
@@ -120,6 +123,7 @@ export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   mode: text("mode").notNull(),
+  userId: varchar("user_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
