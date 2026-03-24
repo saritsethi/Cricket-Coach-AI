@@ -8,9 +8,9 @@ CricketIQ is an AI-powered cricket intelligence platform with three distinct mod
 
 ## Architecture
 - **Frontend**: React + TypeScript + Vite, Tailwind CSS, shadcn/ui components
-- **Backend**: Express.js with streaming SSE for AI chat, cookie-based session auth
+- **Backend**: Express.js with streaming SSE for AI chat, no authentication required
 - **Database**: PostgreSQL with Drizzle ORM
-- **Auth**: Name + email registration (no password), cookie-based sessions, duplicate emails rejected
+- **Auth**: None — app is open access, no login required
 - **AI**: OpenAI via Replit AI Integrations (gpt-5-mini for text, gpt-4o for vision/image analysis)
 - **RAG System**: Mode-based context retrieval from cricket database with scorecard URLs
 - **File Storage**: Replit App Storage (Object Storage) for image uploads via presigned URLs

@@ -1,29 +1,11 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { getRAGContext, getSystemPrompt, enforceFollowUp, enforceCitations, enforceReferences } from "./rag";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import OpenAI from "openai";
 import { z } from "zod";
-import { randomBytes } from "crypto";
-import type { AppMode, User } from "@shared/schema";
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
-  }
-}
-
-const registerSchema = z.object({
-  name: z.string().min(1).max(100).trim(),
-  email: z.string().email().max(200).trim().transform(v => v.toLowerCase()),
-});
-
-const loginSchema = z.object({
-  email: z.string().email().max(200).trim().transform(v => v.toLowerCase()),
-});
+import type { AppMode } from "@shared/schema";
 
 const createConversationSchema = z.object({
   title: z.string().min(1).max(200),
@@ -42,118 +24,14 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-function generateSessionToken(): string {
-  return randomBytes(32).toString("hex");
-}
-
-async function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies?.session as string | undefined;
-  if (!token) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  const user = await storage.getUserBySessionToken(token);
-  if (!user) {
-    return res.status(401).json({ error: "Invalid session" });
-  }
-  req.user = user;
-  next();
-}
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  app.post("/api/auth/register", async (req, res) => {
+  app.get("/api/conversations", async (req, res) => {
     try {
-      const parsed = registerSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Please provide a valid name and email address", details: parsed.error.errors });
-      }
-      const { name, email } = parsed.data;
-
-      const existing = await storage.getUserByEmail(email);
-      if (existing) {
-        return res.status(409).json({ error: "An account with this email already exists. Please sign in instead." });
-      }
-
-      const user = await storage.createUser({ name, email });
-      const token = generateSessionToken();
-      await storage.updateUserSessionToken(user.id, token);
-
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/",
-      });
-
-      res.status(201).json({ id: user.id, name: user.name, email: user.email });
-    } catch (error) {
-      console.error("Error registering user:", error);
-      res.status(500).json({ error: "Failed to register" });
-    }
-  });
-
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const parsed = loginSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Please provide a valid email address" });
-      }
-      const { email } = parsed.data;
-
-      const user = await storage.getUserByEmail(email);
-      if (!user) {
-        return res.status(404).json({ error: "No account found with this email. Please sign up first." });
-      }
-
-      const token = generateSessionToken();
-      await storage.updateUserSessionToken(user.id, token);
-
-      res.cookie("session", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/",
-      });
-
-      res.json({ id: user.id, name: user.name, email: user.email });
-    } catch (error) {
-      console.error("Error logging in:", error);
-      res.status(500).json({ error: "Failed to log in" });
-    }
-  });
-
-  app.post("/api/auth/logout", async (req, res) => {
-    const token = req.cookies?.session as string | undefined;
-    if (token) {
-      const user = await storage.getUserBySessionToken(token);
-      if (user) {
-        await storage.updateUserSessionToken(user.id, null);
-      }
-    }
-    res.clearCookie("session", { path: "/" });
-    res.json({ ok: true });
-  });
-
-  app.get("/api/auth/me", async (req, res) => {
-    const token = req.cookies?.session as string | undefined;
-    if (!token) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    const user = await storage.getUserBySessionToken(token);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid session" });
-    }
-    res.json({ id: user.id, name: user.name, email: user.email });
-  });
-
-  app.get("/api/conversations", authMiddleware, async (req, res) => {
-    try {
-      const conversations = await storage.getConversations(req.user!.id);
+      const conversations = await storage.getConversations();
       res.json(conversations);
     } catch (error) {
       console.error("Error fetching conversations:", error);
@@ -161,12 +39,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/conversations/:id", authMiddleware, async (req, res) => {
+  app.get("/api/conversations/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
-      if (conversation.userId !== req.user!.id) return res.status(403).json({ error: "Not authorized" });
       const messages = await storage.getMessages(id);
       res.json({ ...conversation, messages });
     } catch (error) {
@@ -175,16 +52,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/conversations", authMiddleware, async (req, res) => {
+  app.post("/api/conversations", async (req, res) => {
     try {
       const parsed = createConversationSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const conversation = await storage.createConversation({
-        ...parsed.data,
-        userId: req.user!.id,
-      });
+      const conversation = await storage.createConversation(parsed.data);
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -192,13 +66,9 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/conversations/:id", authMiddleware, async (req, res) => {
+  app.delete("/api/conversations/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id as string);
-      const conversation = await storage.getConversation(id);
-      if (conversation && conversation.userId !== req.user!.id) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
       await storage.deleteConversation(id);
       res.status(204).send();
     } catch (error) {
@@ -207,12 +77,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/chat/:conversationId/messages", authMiddleware, async (req, res) => {
+  app.post("/api/chat/:conversationId/messages", async (req, res) => {
     try {
       const conversationId = parseInt(req.params.conversationId as string);
       const conversation = await storage.getConversation(conversationId);
-      if (!conversation || conversation.userId !== req.user!.id) {
-        return res.status(403).json({ error: "Not authorized" });
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
       const parsed = sendMessageSchema.safeParse(req.body);
