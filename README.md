@@ -28,6 +28,6 @@ Getting Started
 npm install
 npm run db:push
 npm run dev
-The app runs on http://localhost:5000.
+The app can be accessed at https://cricket-coach-ai.replit.app/
 
 Feel free to swap in your own screenshots or add a demo link at the top.
