@@ -3,20 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 
-interface AuthPageProps {
-  onAuth: () => void;
-}
-
-export function AuthPage({ onAuth }: AuthPageProps) {
+export function AuthPage() {
   const [isLogin, setIsLogin] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,28 +17,32 @@ export function AuthPage({ onAuth }: AuthPageProps) {
     setIsLoading(true);
 
     try {
-      if (isLogin) {
-        await apiRequest("POST", "/api/auth/login", { email });
-      } else {
-        await apiRequest("POST", "/api/auth/register", { name, email });
+      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      const body = isLogin ? { email } : { name, email };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const message = data?.error || (res.status === 404
+          ? "No account found with this email. Please sign up first."
+          : res.status === 409
+          ? "An account with this email already exists. Please sign in instead."
+          : isLogin
+          ? "Sign in failed. Please try again."
+          : "Registration failed. Please try again.");
+        setError(message);
+        return;
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      toast({ title: isLogin ? "Welcome back!" : "Account created!" });
-      onAuth();
-    } catch (err: any) {
-      const msg = err?.message || "Something went wrong";
-      try {
-        const parsed = JSON.parse(msg.split(": ").slice(1).join(": "));
-        setError(parsed.error || msg);
-      } catch {
-        if (msg.includes("409")) {
-          setError("An account with this email already exists. Please sign in instead.");
-        } else if (msg.includes("404")) {
-          setError("No account found with this email. Please sign up first.");
-        } else {
-          setError(msg);
-        }
-      }
+
+      window.location.reload();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     } finally {
       setIsLoading(false);
     }

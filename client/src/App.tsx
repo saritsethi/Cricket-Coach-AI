@@ -123,10 +123,6 @@ function AppWithAuth() {
     queryKey: ["/api/auth/me"],
   });
 
-  const handleAuth = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -136,7 +132,7 @@ function AppWithAuth() {
   }
 
   if (!user) {
-    return <AuthPage onAuth={handleAuth} />;
+    return <AuthPage />;
   }
 
   return <MainApp user={user} />;
