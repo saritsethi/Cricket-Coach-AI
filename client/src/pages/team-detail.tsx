@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Upload, Loader2, Users, Calendar, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Upload, Loader2, Users, Calendar, AlertCircle, Pencil, Check, X, BarChart2, Crown } from "lucide-react";
 import type { Team, SquadMember, SeasonSchedule, ScheduledMatch } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+
+const roleColors: Record<string, string> = {
+  Batter: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  Bowler: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  "All-rounder": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  Wicketkeeper: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+};
+
+const statusColors: Record<string, string> = {
+  upcoming: "bg-muted text-muted-foreground",
+  planned: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+};
 
 function SquadTab({ teamId }: { teamId: number }) {
   const { toast } = useToast();
@@ -21,6 +34,9 @@ function SquadTab({ teamId }: { teamId: number }) {
   const [form, setForm] = useState({ name: "", role: "", battingStyle: "", bowlingStyle: "" });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", role: "", battingStyle: "", bowlingStyle: "" });
+  const [editSaving, setEditSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: squad = [], isLoading } = useQuery<SquadMember[]>({
@@ -57,6 +73,30 @@ function SquadTab({ teamId }: { teamId: number }) {
     }
   };
 
+  const startEdit = (member: SquadMember) => {
+    setEditingId(member.id);
+    setEditForm({
+      name: member.name,
+      role: member.role || "",
+      battingStyle: member.battingStyle || "",
+      bowlingStyle: member.bowlingStyle || "",
+    });
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId || !editForm.name.trim()) return;
+    setEditSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/squad/${editingId}`, editForm);
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "squad"] });
+      setEditingId(null);
+    } catch {
+      toast({ title: "Failed to update player", variant: "destructive" });
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const uploadAndExtract = async (file: File) => {
     setUploading(true);
     try {
@@ -89,22 +129,16 @@ function SquadTab({ teamId }: { teamId: number }) {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadAndExtract(file);
-  };
-
-  const roleColors: Record<string, string> = {
-    Batter: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-    Bowler: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-    "All-rounder": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-    Wicketkeeper: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAndExtract(f); }}
+        />
         <Button
           variant="outline"
           className="gap-2"
@@ -139,6 +173,7 @@ function SquadTab({ teamId }: { teamId: number }) {
               placeholder="Player name *"
               value={form.name}
               onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               data-testid="input-player-name"
             />
             <Select value={form.role} onValueChange={(v) => setForm(f => ({ ...f, role: v }))}>
@@ -197,32 +232,104 @@ function SquadTab({ teamId }: { teamId: number }) {
       ) : (
         <div className="space-y-2">
           {squad.map((member, i) => (
-            <Card key={member.id} className="px-4 py-3 flex items-center justify-between" data-testid={`squad-member-${member.id}`}>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground w-5">{i + 1}</span>
-                <div>
-                  <span className="font-medium text-sm">{member.name}</span>
-                  {(member.battingStyle || member.bowlingStyle) && (
-                    <div className="text-xs text-muted-foreground">
-                      {[member.battingStyle, member.bowlingStyle].filter(Boolean).join(" · ")}
-                    </div>
-                  )}
+            <Card key={member.id} className="px-4 py-3" data-testid={`squad-member-${member.id}`}>
+              {editingId === member.id ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      autoFocus
+                      value={editForm.name}
+                      onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Player name *"
+                      data-testid={`input-edit-player-name-${member.id}`}
+                    />
+                    <Select value={editForm.role} onValueChange={(v) => setEditForm(f => ({ ...f, role: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Batter">Batter</SelectItem>
+                        <SelectItem value="Bowler">Bowler</SelectItem>
+                        <SelectItem value="All-rounder">All-rounder</SelectItem>
+                        <SelectItem value="Wicketkeeper">Wicketkeeper</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={editForm.battingStyle} onValueChange={(v) => setEditForm(f => ({ ...f, battingStyle: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Batting style" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Right-hand bat">Right-hand bat</SelectItem>
+                        <SelectItem value="Left-hand bat">Left-hand bat</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={editForm.bowlingStyle} onValueChange={(v) => setEditForm(f => ({ ...f, bowlingStyle: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Bowling style" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Right-arm fast">Right-arm fast</SelectItem>
+                        <SelectItem value="Right-arm medium">Right-arm medium</SelectItem>
+                        <SelectItem value="Left-arm medium">Left-arm medium</SelectItem>
+                        <SelectItem value="Off-spin">Off-spin</SelectItem>
+                        <SelectItem value="Leg-spin">Leg-spin</SelectItem>
+                        <SelectItem value="Left-arm spin">Left-arm spin</SelectItem>
+                        <SelectItem value="N/A">N/A</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleUpdate}
+                      disabled={editSaving || !editForm.name.trim()}
+                      data-testid={`button-save-edit-player-${member.id}`}
+                    >
+                      {editSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                      <X className="w-3.5 h-3.5" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {member.role && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[member.role] || "bg-muted text-muted-foreground"}`}>
-                    {member.role}
-                  </span>
-                )}
-                <button
-                  onClick={() => handleDelete(member.id)}
-                  className="text-muted-foreground hover:text-destructive transition-colors"
-                  data-testid={`button-remove-player-${member.id}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground w-5">{i + 1}</span>
+                    <div>
+                      <span className="font-medium text-sm">{member.name}</span>
+                      {(member.battingStyle || member.bowlingStyle) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[member.battingStyle, member.bowlingStyle].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {member.role && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[member.role] || "bg-muted text-muted-foreground"}`}>
+                        {member.role}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => startEdit(member)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      data-testid={`button-edit-player-${member.id}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(member.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      data-testid={`button-remove-player-${member.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -233,6 +340,7 @@ function SquadTab({ teamId }: { teamId: number }) {
 
 function ScheduleTab({ teamId }: { teamId: number }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [addingMatch, setAddingMatch] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -308,19 +416,16 @@ function ScheduleTab({ teamId }: { teamId: number }) {
     }
   };
 
-  const statusColors: Record<string, string> = {
-    upcoming: "bg-muted text-muted-foreground",
-    planned: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-    completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) uploadAndExtract(f);
-        }} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadAndExtract(f); }}
+        />
         <Button
           variant="outline"
           className="gap-2"
@@ -379,7 +484,11 @@ function ScheduleTab({ teamId }: { teamId: number }) {
             </Select>
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleAddMatch} disabled={saving || !form.opponent.trim()} data-testid="button-save-fixture">
+            <Button
+              onClick={handleAddMatch}
+              disabled={saving || !form.opponent.trim()}
+              data-testid="button-save-fixture"
+            >
               {saving ? "Saving..." : "Add"}
             </Button>
             <Button variant="ghost" onClick={() => setAddingMatch(false)}>Cancel</Button>
@@ -400,18 +509,47 @@ function ScheduleTab({ teamId }: { teamId: number }) {
         <div className="space-y-2">
           {fixtures.map((fixture) => (
             <Card key={fixture.id} className="px-4 py-3" data-testid={`fixture-card-${fixture.id}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-medium text-sm">vs {fixture.opponent}</span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">vs {fixture.opponent}</span>
+                    <Badge
+                      className={`text-xs ${statusColors[fixture.status || "upcoming"]}`}
+                      variant="outline"
+                    >
+                      {fixture.status || "upcoming"}
+                    </Badge>
+                  </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {fixture.matchDate}
                     {fixture.venue ? ` · ${fixture.venue}` : ""}
                     {" · "}{fixture.format}
                   </div>
                 </div>
-                <Badge className={`text-xs ${statusColors[fixture.status || "upcoming"]}`} variant="outline">
-                  {fixture.status || "upcoming"}
-                </Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {fixture.status !== "completed" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs gap-1"
+                      onClick={() => navigate(`/pre-match?fixture=${fixture.id}`)}
+                      data-testid={`button-plan-fixture-${fixture.id}`}
+                    >
+                      <Crown className="w-3 h-3" />
+                      Plan
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={() => navigate(`/post-match?fixture=${fixture.id}`)}
+                    data-testid={`button-analyse-fixture-${fixture.id}`}
+                  >
+                    <BarChart2 className="w-3 h-3" />
+                    Analyse
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}

@@ -1,13 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CricketChat } from "@/components/cricket-chat";
-import { Crown, Calendar, Users, ChevronDown, ChevronRight } from "lucide-react";
-import type { Team, ScheduledMatch, SquadMember } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { Crown, Calendar, Users, ChevronDown, ChevronRight, Save, Loader2, CheckCircle2 } from "lucide-react";
+import type { Team, ScheduledMatch, SquadMember, MatchPlan } from "@shared/schema";
 
 function FixtureSelector({
   teams,
@@ -21,6 +22,15 @@ function FixtureSelector({
   onSelect: (f: ScheduledMatch) => void;
 }) {
   const [expandedTeam, setExpandedTeam] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (selected && teams.length > 0) {
+      const ownerTeam = teams.find(t =>
+        (fixtures[t.id] || []).some(f => f.id === selected.id)
+      );
+      if (ownerTeam) setExpandedTeam(ownerTeam.id);
+    }
+  }, [selected, teams, fixtures]);
 
   return (
     <div className="space-y-2">
@@ -67,10 +77,19 @@ function FixtureSelector({
 }
 
 export function PreMatchPage() {
+  const { toast } = useToast();
   const [selectedFixture, setSelectedFixture] = useState<ScheduledMatch | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planSaved, setPlanSaved] = useState(false);
+
+  const preselectedFixtureId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("fixture");
+    return v ? parseInt(v) : null;
+  }, []);
 
   const { data: teams = [], isLoading: teamsLoading } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
@@ -95,6 +114,17 @@ export function PreMatchPage() {
 
   const allFixtures = fixtureQueries.data || {};
 
+  useEffect(() => {
+    if (!preselectedFixtureId || selectedFixture || !fixtureQueries.data) return;
+    for (const teamFixtures of Object.values(fixtureQueries.data)) {
+      const match = teamFixtures.find(f => f.id === preselectedFixtureId);
+      if (match) {
+        handleFixtureSelect(match);
+        break;
+      }
+    }
+  }, [preselectedFixtureId, fixtureQueries.data, selectedFixture]);
+
   const { data: squad = [] } = useQuery<SquadMember[]>({
     queryKey: ["/api/teams", selectedTeamId, "squad"],
     enabled: !!selectedTeamId,
@@ -106,10 +136,42 @@ export function PreMatchPage() {
     },
   });
 
+  const { data: existingPlan } = useQuery<MatchPlan | null>({
+    queryKey: ["/api/fixtures", selectedFixture?.id, "plan"],
+    enabled: !!selectedFixture?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/fixtures/${selectedFixture!.id}/plan`, {
+        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+      });
+      return res.json();
+    },
+  });
+
   const handleFixtureSelect = (fixture: ScheduledMatch) => {
     setSelectedFixture(fixture);
     setSelectedTeamId(fixture.teamId);
     setConversationId(null);
+    setPlanSaved(false);
+  };
+
+  const handleSavePlan = async () => {
+    if (!selectedFixture) return;
+    setSavingPlan(true);
+    try {
+      await apiRequest("POST", `/api/fixtures/${selectedFixture.id}/plan`, {
+        scheduledMatchId: selectedFixture.id,
+        conversationId,
+        notes: "Saved from pre-match planning chat",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/fixtures", selectedFixture.id, "plan"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/all-fixtures"] });
+      setPlanSaved(true);
+      toast({ title: "Plan saved", description: "Fixture marked as planned." });
+    } catch {
+      toast({ title: "Failed to save plan", variant: "destructive" });
+    } finally {
+      setSavingPlan(false);
+    }
   };
 
   const squadContext = useMemo(() => {
@@ -192,7 +254,7 @@ export function PreMatchPage() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {selectedFixture ? (
           <div className="flex flex-col h-full">
-            <div className="px-4 py-2.5 border-b border-border bg-background flex items-center gap-2 shrink-0">
+            <div className="px-4 py-2.5 border-b border-border bg-background flex items-center gap-2 shrink-0 flex-wrap">
               <button
                 onClick={() => setPanelOpen(v => !v)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
@@ -200,7 +262,7 @@ export function PreMatchPage() {
               >
                 <Calendar className="w-4 h-4" />
               </button>
-              <div>
+              <div className="flex-1 min-w-0">
                 <span className="font-medium text-sm">vs {selectedFixture.opponent}</span>
                 <span className="text-muted-foreground text-xs ml-2">
                   {selectedFixture.matchDate} · {selectedFixture.format}
@@ -208,10 +270,32 @@ export function PreMatchPage() {
                 </span>
               </div>
               {squad.length > 0 && (
-                <Badge variant="outline" className="ml-auto text-xs">
+                <Badge variant="outline" className="text-xs shrink-0">
                   {squad.length} players loaded
                 </Badge>
               )}
+              {existingPlan && !planSaved && (
+                <Badge variant="outline" className="text-xs shrink-0 text-blue-600 border-blue-300">
+                  Plan exists
+                </Badge>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSavePlan}
+                disabled={savingPlan || planSaved}
+                className="gap-1.5 shrink-0"
+                data-testid="button-save-plan"
+              >
+                {savingPlan ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : planSaved ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                {planSaved ? "Saved" : "Save Plan"}
+              </Button>
             </div>
             <div className="flex-1 overflow-hidden">
               <CricketChat

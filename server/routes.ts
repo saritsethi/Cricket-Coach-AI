@@ -59,6 +59,10 @@ export async function registerRoutes(
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
+      const userToken = getUserToken(req);
+      if (conversation.userToken && userToken !== conversation.userToken) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const messages = await storage.getMessages(id);
       res.json({ ...conversation, messages });
     } catch (error) {
@@ -89,6 +93,12 @@ export async function registerRoutes(
   app.delete("/api/conversations/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id as string);
+      const conversation = await storage.getConversation(id);
+      if (!conversation) return res.status(404).json({ error: "Not found" });
+      const userToken = getUserToken(req);
+      if (conversation.userToken && userToken !== conversation.userToken) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       await storage.deleteConversation(id);
       res.status(204).send();
     } catch (error) {
@@ -105,6 +115,10 @@ export async function registerRoutes(
       const conversation = await storage.getConversation(conversationId);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
+      }
+      const userToken = getUserToken(req);
+      if (conversation.userToken && userToken !== conversation.userToken) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       const parsed = sendMessageSchema.safeParse(req.body);
@@ -240,8 +254,12 @@ export async function registerRoutes(
 
   app.get("/api/teams/:id", async (req, res) => {
     try {
+      const captainToken = getUserToken(req);
       const team = await storage.getTeam(parseInt(req.params.id));
       if (!team) return res.status(404).json({ error: "Team not found" });
+      if (captainToken && team.captainToken !== captainToken) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       res.json(team);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch team" });
@@ -263,8 +281,14 @@ export async function registerRoutes(
 
   app.patch("/api/teams/:id", async (req, res) => {
     try {
-      const team = await storage.updateTeam(parseInt(req.params.id), req.body);
-      res.json(team);
+      const captainToken = getUserToken(req);
+      const team = await storage.getTeam(parseInt(req.params.id));
+      if (!team) return res.status(404).json({ error: "Team not found" });
+      if (!captainToken || team.captainToken !== captainToken) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const updated = await storage.updateTeam(team.id, req.body);
+      res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update team" });
     }
@@ -272,7 +296,13 @@ export async function registerRoutes(
 
   app.delete("/api/teams/:id", async (req, res) => {
     try {
-      await storage.deleteTeam(parseInt(req.params.id));
+      const captainToken = getUserToken(req);
+      const team = await storage.getTeam(parseInt(req.params.id));
+      if (!team) return res.status(404).json({ error: "Team not found" });
+      if (!captainToken || team.captainToken !== captainToken) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      await storage.deleteTeam(team.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete team" });

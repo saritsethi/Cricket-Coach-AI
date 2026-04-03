@@ -29,7 +29,7 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange, mode
 
   const currentValue = value !== undefined ? value : internalValue;
   const setCurrentValue = onChange || setInternalValue;
-  const allowMultiple = allowMultipleImages ?? mode === "captain" ?? mode === "pre-match";
+  const allowMultiple = allowMultipleImages ?? mode === "pre-match";
   const isAnyUploading = attachedImages.some(img => img.uploading);
 
   useEffect(() => {

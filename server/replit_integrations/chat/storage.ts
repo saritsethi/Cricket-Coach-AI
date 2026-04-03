@@ -22,7 +22,7 @@ export const chatStorage: IChatStorage = {
   },
 
   async createConversation(title: string) {
-    const [conversation] = await db.insert(conversations).values({ title }).returning();
+    const [conversation] = await db.insert(conversations).values({ title, mode: "pre-match" }).returning();
     return conversation;
   },
 

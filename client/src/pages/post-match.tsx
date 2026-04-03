@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { CricketChat } from "@/components/cricket-chat";
 import { useToast } from "@/hooks/use-toast";
-import { BarChart2, Calendar, Share2, ChevronDown, ChevronRight, CheckCircle2, Loader2 } from "lucide-react";
+import { BarChart2, Calendar, Share2, ChevronDown, ChevronRight, CheckCircle2, Loader2, Copy } from "lucide-react";
 import type { Team, ScheduledMatch, MatchPlan, MatchAnalysis } from "@shared/schema";
 
 function FixtureSelector({
@@ -22,11 +22,10 @@ function FixtureSelector({
   onSelect: (f: ScheduledMatch) => void;
 }) {
   const [expandedTeam, setExpandedTeam] = useState<number | null>(null);
-
   return (
     <div className="space-y-2">
       {teams.map((team) => {
-        const teamFixtures = (fixtures[team.id] || []);
+        const teamFixtures = fixtures[team.id] || [];
         const isExpanded = expandedTeam === team.id;
         return (
           <div key={team.id}>
@@ -77,6 +76,14 @@ export function PostMatchPage() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [summaryNotes, setSummaryNotes] = useState("");
+
+  const preselectedFixtureId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("fixture");
+    return v ? parseInt(v) : null;
+  }, []);
 
   const { data: teams = [], isLoading: teamsLoading } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
@@ -112,7 +119,7 @@ export function PostMatchPage() {
     },
   });
 
-  const { data: analysis } = useQuery<MatchAnalysis | null>({
+  const { data: analysis, refetch: refetchAnalysis } = useQuery<MatchAnalysis | null>({
     queryKey: ["/api/fixtures", selectedFixture?.id, "analysis"],
     enabled: !!selectedFixture?.id,
     queryFn: async () => {
@@ -127,6 +134,53 @@ export function PostMatchPage() {
     setSelectedFixture(fixture);
     setConversationId(null);
     setShareLink(null);
+    setShowSaveForm(false);
+    setSummaryNotes("");
+  };
+
+  const handleShareClick = () => {
+    if (analysis?.shareToken) {
+      const link = `${window.location.origin}/analysis/${analysis.shareToken}`;
+      setShareLink(link);
+      return;
+    }
+    setShowSaveForm(true);
+  };
+
+  const handleSaveAndShare = async () => {
+    if (!selectedFixture) return;
+    setSharing(true);
+    try {
+      const res = await apiRequest("POST", `/api/fixtures/${selectedFixture.id}/analysis`, {
+        scheduledMatchId: selectedFixture.id,
+        conversationId,
+        summaryNotes: summaryNotes.trim() || "Post-match analysis",
+        matchPlanId: prePlan?.id ?? null,
+      });
+      const data = await res.json();
+      const link = `${window.location.origin}/analysis/${data.shareToken}`;
+      setShareLink(link);
+      setShowSaveForm(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/fixtures", selectedFixture.id, "analysis"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/all-fixtures"] });
+      toast({ title: "Analysis saved", description: "Share link generated." });
+    } catch {
+      toast({ title: "Failed to save analysis", variant: "destructive" });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleWhatsApp = () => {
+    if (!shareLink) return;
+    const text = `Match analysis ready for review: ${shareLink}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    toast({ title: "Link copied to clipboard" });
   };
 
   const prePlanContext = useMemo(() => {
@@ -141,37 +195,6 @@ export function PostMatchPage() {
   const extraBody = useMemo(() => ({
     prePlan: prePlanContext,
   }), [prePlanContext]);
-
-  const handleShare = async () => {
-    if (!selectedFixture) return;
-    if (analysis?.shareToken) {
-      const link = `${window.location.origin}/analysis/${analysis.shareToken}`;
-      setShareLink(link);
-      return;
-    }
-
-    setSharing(true);
-    try {
-      const res = await apiRequest("POST", `/api/fixtures/${selectedFixture.id}/analysis`, {
-        scheduledMatchId: selectedFixture.id,
-        conversationId,
-        summaryNotes: "Post-match analysis",
-      });
-      const data = await res.json();
-      const link = `${window.location.origin}/analysis/${data.shareToken}`;
-      setShareLink(link);
-    } catch {
-      toast({ title: "Failed to generate share link", variant: "destructive" });
-    } finally {
-      setSharing(false);
-    }
-  };
-
-  const handleWhatsApp = () => {
-    if (!shareLink) return;
-    const text = `Match analysis ready for review: ${shareLink}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  };
 
   const fixtureLabel = selectedFixture
     ? `vs ${selectedFixture.opponent} (${selectedFixture.format})`
@@ -217,12 +240,53 @@ export function PostMatchPage() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Share link</p>
               <div className="text-xs text-primary break-all bg-primary/5 rounded-md p-2">{shareLink}</div>
               <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleCopyLink}
+                data-testid="button-copy-link"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                Copy link
+              </Button>
+              <Button
                 className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
                 onClick={handleWhatsApp}
                 data-testid="button-share-whatsapp"
               >
                 <Share2 className="w-4 h-4" />
                 Share on WhatsApp
+              </Button>
+            </div>
+          )}
+
+          {showSaveForm && !shareLink && (
+            <div className="mt-6 space-y-3 border-t border-border pt-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Save Analysis</p>
+              <Textarea
+                placeholder="Add a summary or notes for your players (optional)..."
+                value={summaryNotes}
+                onChange={(e) => setSummaryNotes(e.target.value)}
+                rows={3}
+                className="text-sm resize-none"
+                data-testid="textarea-summary-notes"
+              />
+              <Button
+                className="w-full gap-2"
+                onClick={handleSaveAndShare}
+                disabled={sharing}
+                data-testid="button-save-and-share"
+              >
+                {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                {sharing ? "Saving..." : "Save & Get Link"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => setShowSaveForm(false)}
+              >
+                Cancel
               </Button>
             </div>
           )}
@@ -249,16 +313,22 @@ export function PostMatchPage() {
               {prePlan && (
                 <Badge variant="outline" className="text-xs shrink-0">Plan loaded</Badge>
               )}
+              {analysis?.shareToken && (
+                <Badge variant="outline" className="text-xs shrink-0 text-green-600 border-green-300">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Shared
+                </Badge>
+              )}
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleShare}
+                onClick={handleShareClick}
                 disabled={sharing}
                 className="gap-1.5 shrink-0"
                 data-testid="button-generate-share"
               >
                 {sharing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
-                Share
+                {analysis?.shareToken ? "Share Again" : "Save & Share"}
               </Button>
             </div>
             <div className="flex-1 overflow-hidden">
