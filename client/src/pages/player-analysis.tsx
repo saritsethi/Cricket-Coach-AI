@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest, getUserToken } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -61,7 +61,6 @@ function NameModal({ onConfirm }: { onConfirm: (name: string) => void }) {
 
 export function PlayerAnalysisPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
-  const userToken = getUserToken();
   const [playerName, setPlayerName] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -93,7 +92,6 @@ export function PlayerAnalysisPage() {
         const res = await apiRequest("POST", "/api/player-sessions", {
           analysisId: analysisData.analysis.id,
           playerName,
-          userToken,
         });
         const data = await res.json();
         setSessionId(data.session.id);

@@ -57,7 +57,7 @@ const openai = new OpenAI({
 });
 
 function getUserToken(req: Request): string | undefined {
-  return (req.headers["x-user-token"] as string) || undefined;
+  return (req.headers["x-user-token"] as string) || (req.query.userToken as string) || undefined;
 }
 
 function requireUserToken(req: Request, res: Response): string | null {
@@ -730,9 +730,11 @@ export async function registerRoutes(
 
   app.post("/api/player-sessions", async (req, res) => {
     try {
-      const { analysisId, playerName, userToken } = req.body as { analysisId?: number; playerName?: string; userToken?: string };
-      if (!analysisId || !playerName || !userToken) {
-        return res.status(400).json({ error: "analysisId, playerName, userToken required" });
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
+      const { analysisId, playerName } = req.body as { analysisId?: number; playerName?: string };
+      if (!analysisId || !playerName) {
+        return res.status(400).json({ error: "analysisId and playerName required" });
       }
 
       const existing = await storage.getPlayerSession(analysisId, playerName, userToken);

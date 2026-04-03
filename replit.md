@@ -39,7 +39,7 @@ CricketIQ is an AI-powered cricket intelligence platform centred around **Teams*
 - `players` — Player profiles with strengths/weaknesses (seeded)
 - `player_images` — Player technique images
 - `conversations` — Chat conversations (has `user_token` column for privacy)
-- `messages` — Chat messages (with optional imageUrl)
+- `messages` — Chat messages (with optional `imageUrl` for primary image and `imageUrls text[]` for all multi-image uploads)
 - `teams` — Captain's teams (owned by `captain_token`)
 - `squad_members` — Players in each team
 - `season_schedules` — Season containers for fixture lists
@@ -58,7 +58,7 @@ CricketIQ is an AI-powered cricket intelligence platform centred around **Teams*
 - `POST /api/chat/:conversationId/messages` — Send message (SSE streaming response)
 
 ### Image Extraction (AI)
-- `POST /api/extract` — Extract structured data from image: `{ imageUrl, extractionType: "squad"|"schedule"|"scorecard" }` → JSON array/object
+- `POST /api/extract` — Extract structured data from image: `{ imageUrl, extractionType: "squad"|"schedule"|"scorecard", context?: string }` → JSON array/object
 
 ### Teams & Squad
 - `GET /api/teams` — List teams for captainToken
@@ -88,7 +88,7 @@ CricketIQ is an AI-powered cricket intelligence platform centred around **Teams*
 
 ### Public & Player
 - `GET /api/analysis/:shareToken` — Public analysis data (no auth required)
-- `POST /api/player-sessions` — Get or create player session
+- `POST /api/player-sessions` — Get or create player session (uses `x-user-token` header, not body)
 - `PATCH /api/player-sessions/:id` — Update session (link conversation)
 
 ### Object Storage
