@@ -183,8 +183,15 @@ export async function registerRoutes(
 
       const allImageUrls = imageUrls && imageUrls.length > 0 ? imageUrls : (imageUrl ? [imageUrl] : []);
       const primaryImageUrl = allImageUrls[0] || null;
+      const allImageUrlsToStore = allImageUrls.length > 0 ? allImageUrls : undefined;
 
-      await storage.createMessage({ conversationId, role: "user", content, imageUrl: primaryImageUrl });
+      await storage.createMessage({
+        conversationId,
+        role: "user",
+        content,
+        imageUrl: primaryImageUrl,
+        imageUrls: allImageUrlsToStore,
+      });
 
       const existingMessages = await storage.getMessages(conversationId);
       const userMessages = existingMessages.filter(m => m.role === "user");
@@ -242,7 +249,10 @@ export async function registerRoutes(
       const recentMessages = existingMessages.slice(-10);
       recentMessages.forEach((m, idx) => {
         const isLastUserMsg = m.role === "user" && idx === recentMessages.length - 1;
-        const msgImageUrls = isLastUserMsg && allImageUrls.length > 1 ? allImageUrls : (m.imageUrl ? [m.imageUrl] : []);
+        // For the last user message, prefer the freshly-sent allImageUrls (may have multi images);
+        // for historical messages, read the stored imageUrls array or fall back to single imageUrl
+        const storedUrls = m.imageUrls && m.imageUrls.length > 0 ? m.imageUrls : (m.imageUrl ? [m.imageUrl] : []);
+        const msgImageUrls = isLastUserMsg ? (allImageUrls.length > 0 ? allImageUrls : storedUrls) : storedUrls;
 
         if (msgImageUrls.length > 0 && m.role === "user") {
           const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
@@ -307,12 +317,12 @@ export async function registerRoutes(
 
   app.post("/api/extract", async (req, res) => {
     try {
-      const { imageUrl, extractionType } = req.body as { imageUrl: string; extractionType: "squad" | "schedule" | "scorecard" };
+      const { imageUrl, extractionType, context } = req.body as { imageUrl: string; extractionType: "squad" | "schedule" | "scorecard"; context?: string };
       if (!imageUrl || !extractionType) {
         return res.status(400).json({ error: "imageUrl and extractionType are required" });
       }
       const host = `${req.protocol}://${req.get("host")}`;
-      const result = await extractDataFromImage(imageUrl, extractionType, openai, host);
+      const result = await extractDataFromImage(imageUrl, extractionType, openai, host, context);
       res.json({ data: result });
     } catch (error) {
       console.error("Error extracting data:", error);
@@ -615,7 +625,11 @@ export async function registerRoutes(
       let imageUrls: string[] = [];
       if (payload.conversationId) {
         const msgs = await storage.getMessages(payload.conversationId);
-        imageUrls = msgs.filter(m => m.imageUrl).map(m => m.imageUrl!);
+        imageUrls = msgs.flatMap(m => {
+          if (m.imageUrls && m.imageUrls.length > 0) return m.imageUrls;
+          if (m.imageUrl) return [m.imageUrl];
+          return [];
+        });
       }
 
       const existing = await storage.getMatchPlan(scheduledMatchId);
@@ -667,7 +681,11 @@ export async function registerRoutes(
       let imageUrls: string[] = [];
       if (payload.conversationId) {
         const msgs = await storage.getMessages(payload.conversationId);
-        imageUrls = msgs.filter(m => m.imageUrl).map(m => m.imageUrl!);
+        imageUrls = msgs.flatMap(m => {
+          if (m.imageUrls && m.imageUrls.length > 0) return m.imageUrls;
+          if (m.imageUrl) return [m.imageUrl];
+          return [];
+        });
       }
       // Also include plan images if we have a plan
       if (imageUrls.length === 0 && existing?.scheduledMatchId) {

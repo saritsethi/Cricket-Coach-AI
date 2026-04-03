@@ -402,7 +402,8 @@ export async function extractDataFromImage(
   imageUrl: string,
   extractionType: "squad" | "schedule" | "scorecard",
   openai: any,
-  host: string
+  host: string,
+  context?: string
 ): Promise<any> {
   const prompts: Record<string, string> = {
     squad: `You are analysing a team sheet or squad list image. Extract all player information you can see.
@@ -422,6 +423,9 @@ Only return the JSON object, nothing else.`,
   };
 
   const absoluteUrl = imageUrl.startsWith("http") ? imageUrl : `${host}${imageUrl}`;
+  const promptText = context
+    ? `${prompts[extractionType]}\n\nAdditional context: ${context}`
+    : prompts[extractionType];
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -429,7 +433,7 @@ Only return the JSON object, nothing else.`,
       {
         role: "user",
         content: [
-          { type: "text", text: prompts[extractionType] },
+          { type: "text", text: promptText },
           { type: "image_url", image_url: { url: absoluteUrl } },
         ],
       },

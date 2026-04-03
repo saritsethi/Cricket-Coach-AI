@@ -20,10 +20,9 @@ function NameModal({ onConfirm }: { onConfirm: (name: string) => void }) {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!name.trim()) return;
     setSaving(true);
-    await new Promise(r => setTimeout(r, 100));
     onConfirm(name.trim());
   };
 
