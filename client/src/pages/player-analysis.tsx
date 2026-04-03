@@ -109,13 +109,14 @@ export function PlayerAnalysisPage() {
     initSession();
   }, [playerName, analysisData?.analysis?.id]);
 
-  const handleConversationCreated = async (convId: number) => {
+  // Reconcile: patch player session with conversationId once both are known
+  useEffect(() => {
+    if (!sessionId || !conversationId) return;
+    apiRequest("PATCH", `/api/player-sessions/${sessionId}`, { conversationId }).catch(() => {});
+  }, [sessionId, conversationId]);
+
+  const handleConversationCreated = (convId: number) => {
     setConversationId(convId);
-    if (sessionId) {
-      try {
-        await apiRequest("PATCH", `/api/player-sessions/${sessionId}`, { conversationId: convId });
-      } catch {}
-    }
   };
 
   const matchContext = useMemo(() => {
@@ -145,6 +146,7 @@ export function PlayerAnalysisPage() {
     return {
       playerName: playerName || undefined,
       matchContext,
+      analysisId: analysisData?.analysis?.id,
       imageUrls: allImages.length > 0 ? allImages : undefined,
       isPlayerAnalysisPage: true,
     };

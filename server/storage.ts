@@ -80,6 +80,7 @@ export interface IStorage {
   updateMatchPlan(id: number, data: Partial<InsertMatchPlan>): Promise<MatchPlan>;
 
   getMatchAnalysis(scheduledMatchId: number): Promise<MatchAnalysis | undefined>;
+  getMatchAnalysisById(id: number): Promise<MatchAnalysis | undefined>;
   getMatchAnalysisByToken(shareToken: string): Promise<MatchAnalysis | undefined>;
   createMatchAnalysis(analysis: InsertMatchAnalysis): Promise<MatchAnalysis>;
   updateMatchAnalysis(id: number, data: Partial<InsertMatchAnalysis>): Promise<MatchAnalysis>;
@@ -318,6 +319,10 @@ export class DatabaseStorage implements IStorage {
   // Match analyses
   async getMatchAnalysis(scheduledMatchId: number) {
     const [analysis] = await db.select().from(matchAnalyses).where(eq(matchAnalyses.scheduledMatchId, scheduledMatchId));
+    return analysis;
+  }
+  async getMatchAnalysisById(id: number) {
+    const [analysis] = await db.select().from(matchAnalyses).where(eq(matchAnalyses.id, id));
     return analysis;
   }
   async getMatchAnalysisByToken(shareToken: string) {

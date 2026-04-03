@@ -24,6 +24,7 @@ const sendMessageSchema = z.object({
   prePlan: z.string().optional(),
   matchContext: z.string().optional(),
   isPlayerAnalysisPage: z.boolean().optional(),
+  analysisId: z.number().optional(),
 });
 
 const squadMemberSchema = z.object({
@@ -178,7 +179,7 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const { content, mode, imageUrl, imageUrls, playerName, squadContext, prePlan, matchContext, isPlayerAnalysisPage } = parsed.data;
+      const { content, mode, imageUrl, imageUrls, playerName, squadContext, prePlan, matchContext: clientMatchContext, isPlayerAnalysisPage, analysisId } = parsed.data;
 
       const allImageUrls = imageUrls && imageUrls.length > 0 ? imageUrls : (imageUrl ? [imageUrl] : []);
       const primaryImageUrl = allImageUrls[0] || null;
@@ -188,6 +189,33 @@ export async function registerRoutes(
       const existingMessages = await storage.getMessages(conversationId);
       const userMessages = existingMessages.filter(m => m.role === "user");
       const allUserContent = userMessages.map(m => m.content).join(" ");
+
+      // Build matchContext server-side from analysisId if client didn't provide it
+      let matchContext = clientMatchContext;
+      if (!matchContext && analysisId && mode === "player") {
+        try {
+          const analysisRow = await storage.getMatchAnalysisById(analysisId);
+          if (analysisRow) {
+            const [fix, plan] = await Promise.all([
+              storage.getScheduledMatch(analysisRow.scheduledMatchId),
+              storage.getMatchPlan(analysisRow.scheduledMatchId),
+            ]);
+            const parts: string[] = [];
+            if (fix) {
+              parts.push(`Match: vs ${fix.opponent} (${fix.format ?? ""})`);
+              if (fix.matchDate) parts.push(`Date: ${fix.matchDate}`);
+              if (fix.venue) parts.push(`Venue: ${fix.venue}`);
+              if (fix.result) parts.push(`Result: ${fix.result}`);
+            }
+            if (analysisRow.summaryNotes) parts.push(`Match Summary: ${analysisRow.summaryNotes}`);
+            if (plan?.battingOrder) parts.push(`Planned batting order: ${plan.battingOrder}`);
+            if (plan?.bowlingPlan) parts.push(`Bowling plan: ${plan.bowlingPlan}`);
+            matchContext = parts.join("\n");
+          }
+        } catch {
+          // Fall back to client-provided context (already undefined/empty)
+        }
+      }
 
       const ragContext = await getRAGContext(mode as AppMode, allUserContent, {
         squadContext,

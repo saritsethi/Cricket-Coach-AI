@@ -182,10 +182,15 @@ export function PostMatchPage() {
     }
   };
 
+  const whatsAppShareText = useMemo(() => {
+    if (!shareLink) return "";
+    const opponent = selectedFixture?.opponent ? `vs ${selectedFixture.opponent} ` : "";
+    return `Match analysis ${opponent}is ready. Tap to review your performance and get coaching feedback: ${shareLink}`;
+  }, [shareLink, selectedFixture?.opponent]);
+
   const handleWhatsApp = () => {
     if (!shareLink) return;
-    const text = `Match analysis ready for review: ${shareLink}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppShareText)}`, "_blank");
   };
 
   const handleCopyLink = () => {
@@ -264,6 +269,7 @@ export function PostMatchPage() {
                 className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
                 onClick={handleWhatsApp}
                 data-testid="button-share-whatsapp"
+                data-share-text={whatsAppShareText}
               >
                 <Share2 className="w-4 h-4" />
                 Share on WhatsApp
