@@ -18,9 +18,10 @@ interface ChatInputProps {
   value?: string;
   onChange?: (value: string) => void;
   mode?: AppMode;
+  allowMultipleImages?: boolean;
 }
 
-export function ChatInput({ onSend, disabled, placeholder, value, onChange, mode }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder, value, onChange, mode, allowMultipleImages }: ChatInputProps) {
   const [internalValue, setInternalValue] = useState("");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -28,7 +29,7 @@ export function ChatInput({ onSend, disabled, placeholder, value, onChange, mode
 
   const currentValue = value !== undefined ? value : internalValue;
   const setCurrentValue = onChange || setInternalValue;
-  const allowMultiple = mode === "captain";
+  const allowMultiple = allowMultipleImages ?? mode === "captain" ?? mode === "pre-match";
   const isAnyUploading = attachedImages.some(img => img.uploading);
 
   useEffect(() => {

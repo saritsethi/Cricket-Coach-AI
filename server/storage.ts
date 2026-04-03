@@ -1,16 +1,23 @@
 import { db } from "./db";
 import {
-  users, matches, deliveries, players, playerImages, equipment, conversations, messages,
+  users, matches, deliveries, players, playerImages, conversations, messages,
+  teams, squadMembers, seasonSchedules, scheduledMatches, matchPlans, matchAnalyses, playerSessions,
   type User, type InsertUser,
   type Match, type InsertMatch,
   type Delivery, type InsertDelivery,
   type Player, type InsertPlayer,
   type PlayerImage, type InsertPlayerImage,
-  type Equipment, type InsertEquipment,
   type Conversation, type InsertConversation,
   type Message, type InsertMessage,
+  type Team, type InsertTeam,
+  type SquadMember, type InsertSquadMember,
+  type SeasonSchedule, type InsertSeasonSchedule,
+  type ScheduledMatch, type InsertScheduledMatch,
+  type MatchPlan, type InsertMatchPlan,
+  type MatchAnalysis, type InsertMatchAnalysis,
+  type PlayerSession, type InsertPlayerSession,
 } from "@shared/schema";
-import { eq, desc, and, ilike, or, sql } from "drizzle-orm";
+import { eq, desc, and, ilike, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -36,18 +43,49 @@ export interface IStorage {
   getPlayerImagesByRole(role: string): Promise<PlayerImage[]>;
   createPlayerImage(image: InsertPlayerImage): Promise<PlayerImage>;
 
-  getEquipment(): Promise<Equipment[]>;
-  getEquipmentById(id: number): Promise<Equipment | undefined>;
-  createEquipment(item: InsertEquipment): Promise<Equipment>;
-  searchEquipment(query: string): Promise<Equipment[]>;
-
-  getConversations(userId?: string): Promise<Conversation[]>;
+  getConversations(userToken?: string): Promise<Conversation[]>;
   getConversation(id: number): Promise<Conversation | undefined>;
   createConversation(conv: InsertConversation): Promise<Conversation>;
   deleteConversation(id: number): Promise<void>;
 
   getMessages(conversationId: number): Promise<Message[]>;
   createMessage(msg: InsertMessage): Promise<Message>;
+
+  getTeams(captainToken: string): Promise<Team[]>;
+  getTeam(id: number): Promise<Team | undefined>;
+  createTeam(team: InsertTeam): Promise<Team>;
+  updateTeam(id: number, data: Partial<InsertTeam>): Promise<Team>;
+  deleteTeam(id: number): Promise<void>;
+
+  getSquadMembers(teamId: number): Promise<SquadMember[]>;
+  getSquadMember(id: number): Promise<SquadMember | undefined>;
+  createSquadMember(member: InsertSquadMember): Promise<SquadMember>;
+  updateSquadMember(id: number, data: Partial<InsertSquadMember>): Promise<SquadMember>;
+  deleteSquadMember(id: number): Promise<void>;
+  bulkCreateSquadMembers(members: InsertSquadMember[]): Promise<SquadMember[]>;
+
+  getSeasonSchedules(teamId: number): Promise<SeasonSchedule[]>;
+  createSeasonSchedule(schedule: InsertSeasonSchedule): Promise<SeasonSchedule>;
+
+  getScheduledMatches(scheduleId: number): Promise<ScheduledMatch[]>;
+  getScheduledMatchesByTeam(teamId: number): Promise<ScheduledMatch[]>;
+  getScheduledMatch(id: number): Promise<ScheduledMatch | undefined>;
+  createScheduledMatch(match: InsertScheduledMatch): Promise<ScheduledMatch>;
+  updateScheduledMatch(id: number, data: Partial<InsertScheduledMatch>): Promise<ScheduledMatch>;
+  bulkCreateScheduledMatches(matches: InsertScheduledMatch[]): Promise<ScheduledMatch[]>;
+
+  getMatchPlan(scheduledMatchId: number): Promise<MatchPlan | undefined>;
+  createMatchPlan(plan: InsertMatchPlan): Promise<MatchPlan>;
+  updateMatchPlan(id: number, data: Partial<InsertMatchPlan>): Promise<MatchPlan>;
+
+  getMatchAnalysis(scheduledMatchId: number): Promise<MatchAnalysis | undefined>;
+  getMatchAnalysisByToken(shareToken: string): Promise<MatchAnalysis | undefined>;
+  createMatchAnalysis(analysis: InsertMatchAnalysis): Promise<MatchAnalysis>;
+  updateMatchAnalysis(id: number, data: Partial<InsertMatchAnalysis>): Promise<MatchAnalysis>;
+
+  getPlayerSession(analysisId: number, playerName: string, userToken: string): Promise<PlayerSession | undefined>;
+  createPlayerSession(session: InsertPlayerSession): Promise<PlayerSession>;
+  updatePlayerSession(id: number, data: Partial<InsertPlayerSession>): Promise<PlayerSession>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -111,7 +149,6 @@ export class DatabaseStorage implements IStorage {
     if (filters.shotType) conditions.push(ilike(deliveries.shotType, `%${filters.shotType}%`));
     if (filters.deliveryType) conditions.push(ilike(deliveries.deliveryType, `%${filters.deliveryType}%`));
     if (filters.isWicket !== undefined) conditions.push(eq(deliveries.isWicket, filters.isWicket));
-
     if (conditions.length === 0) return db.select().from(deliveries).limit(50);
     return db.select().from(deliveries).where(and(...conditions)).limit(50);
   }
@@ -139,7 +176,6 @@ export class DatabaseStorage implements IStorage {
       )
     ).limit(20);
   }
-
   async getPlayerImages(playerId: number) {
     return db.select().from(playerImages).where(eq(playerImages.playerId, playerId));
   }
@@ -151,32 +187,11 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getEquipment() {
-    return db.select().from(equipment).orderBy(desc(equipment.rating));
-  }
-  async getEquipmentById(id: number) {
-    const [item] = await db.select().from(equipment).where(eq(equipment.id, id));
-    return item;
-  }
-  async createEquipment(item: InsertEquipment) {
-    const [created] = await db.insert(equipment).values(item).returning();
-    return created;
-  }
-  async searchEquipment(query: string) {
-    const pattern = `%${query}%`;
-    return db.select().from(equipment).where(
-      or(
-        ilike(equipment.name, pattern),
-        ilike(equipment.category, pattern),
-        ilike(equipment.brand, pattern),
-        ilike(equipment.description, pattern)
-      )
-    ).limit(20);
-  }
-
-  async getConversations(userId?: string) {
-    if (userId) {
-      return db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(desc(conversations.createdAt));
+  async getConversations(userToken?: string) {
+    if (userToken) {
+      return db.select().from(conversations)
+        .where(eq(conversations.userToken, userToken))
+        .orderBy(desc(conversations.createdAt));
     }
     return db.select().from(conversations).orderBy(desc(conversations.createdAt));
   }
@@ -201,6 +216,135 @@ export class DatabaseStorage implements IStorage {
   async createMessage(msg: InsertMessage) {
     const [created] = await db.insert(messages).values(msg).returning();
     return created;
+  }
+
+  // Teams
+  async getTeams(captainToken: string) {
+    return db.select().from(teams).where(eq(teams.captainToken, captainToken)).orderBy(desc(teams.createdAt));
+  }
+  async getTeam(id: number) {
+    const [team] = await db.select().from(teams).where(eq(teams.id, id));
+    return team;
+  }
+  async createTeam(team: InsertTeam) {
+    const [created] = await db.insert(teams).values(team).returning();
+    return created;
+  }
+  async updateTeam(id: number, data: Partial<InsertTeam>) {
+    const [updated] = await db.update(teams).set(data).where(eq(teams.id, id)).returning();
+    return updated;
+  }
+  async deleteTeam(id: number) {
+    await db.delete(teams).where(eq(teams.id, id));
+  }
+
+  // Squad members
+  async getSquadMembers(teamId: number) {
+    return db.select().from(squadMembers).where(eq(squadMembers.teamId, teamId)).orderBy(squadMembers.name);
+  }
+  async getSquadMember(id: number) {
+    const [member] = await db.select().from(squadMembers).where(eq(squadMembers.id, id));
+    return member;
+  }
+  async createSquadMember(member: InsertSquadMember) {
+    const [created] = await db.insert(squadMembers).values(member).returning();
+    return created;
+  }
+  async updateSquadMember(id: number, data: Partial<InsertSquadMember>) {
+    const [updated] = await db.update(squadMembers).set(data).where(eq(squadMembers.id, id)).returning();
+    return updated;
+  }
+  async deleteSquadMember(id: number) {
+    await db.delete(squadMembers).where(eq(squadMembers.id, id));
+  }
+  async bulkCreateSquadMembers(members: InsertSquadMember[]) {
+    if (members.length === 0) return [];
+    return db.insert(squadMembers).values(members).returning();
+  }
+
+  // Season schedules
+  async getSeasonSchedules(teamId: number) {
+    return db.select().from(seasonSchedules).where(eq(seasonSchedules.teamId, teamId)).orderBy(desc(seasonSchedules.createdAt));
+  }
+  async createSeasonSchedule(schedule: InsertSeasonSchedule) {
+    const [created] = await db.insert(seasonSchedules).values(schedule).returning();
+    return created;
+  }
+
+  // Scheduled matches
+  async getScheduledMatches(scheduleId: number) {
+    return db.select().from(scheduledMatches).where(eq(scheduledMatches.scheduleId, scheduleId)).orderBy(scheduledMatches.matchDate);
+  }
+  async getScheduledMatchesByTeam(teamId: number) {
+    return db.select().from(scheduledMatches).where(eq(scheduledMatches.teamId, teamId)).orderBy(scheduledMatches.matchDate);
+  }
+  async getScheduledMatch(id: number) {
+    const [match] = await db.select().from(scheduledMatches).where(eq(scheduledMatches.id, id));
+    return match;
+  }
+  async createScheduledMatch(match: InsertScheduledMatch) {
+    const [created] = await db.insert(scheduledMatches).values(match).returning();
+    return created;
+  }
+  async updateScheduledMatch(id: number, data: Partial<InsertScheduledMatch>) {
+    const [updated] = await db.update(scheduledMatches).set(data).where(eq(scheduledMatches.id, id)).returning();
+    return updated;
+  }
+  async bulkCreateScheduledMatches(matches: InsertScheduledMatch[]) {
+    if (matches.length === 0) return [];
+    return db.insert(scheduledMatches).values(matches).returning();
+  }
+
+  // Match plans
+  async getMatchPlan(scheduledMatchId: number) {
+    const [plan] = await db.select().from(matchPlans).where(eq(matchPlans.scheduledMatchId, scheduledMatchId));
+    return plan;
+  }
+  async createMatchPlan(plan: InsertMatchPlan) {
+    const [created] = await db.insert(matchPlans).values(plan).returning();
+    return created;
+  }
+  async updateMatchPlan(id: number, data: Partial<InsertMatchPlan>) {
+    const [updated] = await db.update(matchPlans).set(data).where(eq(matchPlans.id, id)).returning();
+    return updated;
+  }
+
+  // Match analyses
+  async getMatchAnalysis(scheduledMatchId: number) {
+    const [analysis] = await db.select().from(matchAnalyses).where(eq(matchAnalyses.scheduledMatchId, scheduledMatchId));
+    return analysis;
+  }
+  async getMatchAnalysisByToken(shareToken: string) {
+    const [analysis] = await db.select().from(matchAnalyses).where(eq(matchAnalyses.shareToken, shareToken));
+    return analysis;
+  }
+  async createMatchAnalysis(analysis: InsertMatchAnalysis) {
+    const [created] = await db.insert(matchAnalyses).values(analysis).returning();
+    return created;
+  }
+  async updateMatchAnalysis(id: number, data: Partial<InsertMatchAnalysis>) {
+    const [updated] = await db.update(matchAnalyses).set(data).where(eq(matchAnalyses.id, id)).returning();
+    return updated;
+  }
+
+  // Player sessions
+  async getPlayerSession(analysisId: number, playerName: string, userToken: string) {
+    const [session] = await db.select().from(playerSessions).where(
+      and(
+        eq(playerSessions.analysisId, analysisId),
+        eq(playerSessions.playerName, playerName),
+        eq(playerSessions.userToken, userToken)
+      )
+    );
+    return session;
+  }
+  async createPlayerSession(session: InsertPlayerSession) {
+    const [created] = await db.insert(playerSessions).values(session).returning();
+    return created;
+  }
+  async updatePlayerSession(id: number, data: Partial<InsertPlayerSession>) {
+    const [updated] = await db.update(playerSessions).set(data).where(eq(playerSessions.id, id)).returning();
+    return updated;
   }
 }
 

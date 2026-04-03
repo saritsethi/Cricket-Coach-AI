@@ -100,30 +100,12 @@ export const insertPlayerImageSchema = createInsertSchema(playerImages).omit({ i
 export type InsertPlayerImage = z.infer<typeof insertPlayerImageSchema>;
 export type PlayerImage = typeof playerImages.$inferSelect;
 
-export const equipment = pgTable("equipment", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  category: text("category").notNull(),
-  brand: text("brand").notNull(),
-  description: text("description").notNull(),
-  rating: real("rating").default(0),
-  priceRange: text("price_range"),
-  suitableFor: text("suitable_for").array(),
-  pros: text("pros").array(),
-  cons: text("cons").array(),
-  imageUrl: text("image_url"),
-  specifications: jsonb("specifications"),
-});
-
-export const insertEquipmentSchema = createInsertSchema(equipment).omit({ id: true });
-export type InsertEquipment = z.infer<typeof insertEquipmentSchema>;
-export type Equipment = typeof equipment.$inferSelect;
-
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   mode: text("mode").notNull(),
   userId: varchar("user_id"),
+  userToken: text("user_token"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -150,24 +132,146 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
-export type AppMode = "captain" | "skills" | "equipment";
+// ─── Team Management ─────────────────────────────────────────────────────────
+
+export const teams = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  captainToken: text("captain_token").notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true });
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+
+export const squadMembers = pgTable("squad_members", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  name: text("name").notNull(),
+  role: text("role"),
+  battingStyle: text("batting_style"),
+  bowlingStyle: text("bowling_style"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertSquadMemberSchema = createInsertSchema(squadMembers).omit({ id: true, createdAt: true });
+export type InsertSquadMember = z.infer<typeof insertSquadMemberSchema>;
+export type SquadMember = typeof squadMembers.$inferSelect;
+
+// ─── Season Schedule ──────────────────────────────────────────────────────────
+
+export const seasonSchedules = pgTable("season_schedules", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  seasonName: text("season_name").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertSeasonScheduleSchema = createInsertSchema(seasonSchedules).omit({ id: true, createdAt: true });
+export type InsertSeasonSchedule = z.infer<typeof insertSeasonScheduleSchema>;
+export type SeasonSchedule = typeof seasonSchedules.$inferSelect;
+
+export const scheduledMatches = pgTable("scheduled_matches", {
+  id: serial("id").primaryKey(),
+  scheduleId: integer("schedule_id").notNull(),
+  teamId: integer("team_id").notNull(),
+  opponent: text("opponent").notNull(),
+  matchDate: text("match_date").notNull(),
+  venue: text("venue"),
+  format: text("format").notNull(),
+  homeAway: text("home_away").default("home"),
+  status: text("status").default("upcoming"),
+  result: text("result"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertScheduledMatchSchema = createInsertSchema(scheduledMatches).omit({ id: true, createdAt: true });
+export type InsertScheduledMatch = z.infer<typeof insertScheduledMatchSchema>;
+export type ScheduledMatch = typeof scheduledMatches.$inferSelect;
+
+// ─── Match Plans & Analyses ──────────────────────────────────────────────────
+
+export const matchPlans = pgTable("match_plans", {
+  id: serial("id").primaryKey(),
+  scheduledMatchId: integer("scheduled_match_id").notNull(),
+  conversationId: integer("conversation_id"),
+  battingOrder: text("batting_order"),
+  bowlingPlan: text("bowling_plan"),
+  notes: text("notes"),
+  imageUrls: text("image_urls").array(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertMatchPlanSchema = createInsertSchema(matchPlans).omit({ id: true, createdAt: true });
+export type InsertMatchPlan = z.infer<typeof insertMatchPlanSchema>;
+export type MatchPlan = typeof matchPlans.$inferSelect;
+
+export const matchAnalyses = pgTable("match_analyses", {
+  id: serial("id").primaryKey(),
+  scheduledMatchId: integer("scheduled_match_id").notNull(),
+  matchPlanId: integer("match_plan_id"),
+  conversationId: integer("conversation_id"),
+  summaryNotes: text("summary_notes"),
+  imageUrls: text("image_urls").array(),
+  shareToken: text("share_token").unique(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertMatchAnalysisSchema = createInsertSchema(matchAnalyses).omit({ id: true, createdAt: true });
+export type InsertMatchAnalysis = z.infer<typeof insertMatchAnalysisSchema>;
+export type MatchAnalysis = typeof matchAnalyses.$inferSelect;
+
+// ─── Player Sessions (via WhatsApp share link) ────────────────────────────────
+
+export const playerSessions = pgTable("player_sessions", {
+  id: serial("id").primaryKey(),
+  analysisId: integer("analysis_id").notNull(),
+  playerName: text("player_name").notNull(),
+  userToken: text("user_token").notNull(),
+  conversationId: integer("conversation_id"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertPlayerSessionSchema = createInsertSchema(playerSessions).omit({ id: true, createdAt: true });
+export type InsertPlayerSession = z.infer<typeof insertPlayerSessionSchema>;
+export type PlayerSession = typeof playerSessions.$inferSelect;
+
+// ─── App Mode ─────────────────────────────────────────────────────────────────
+
+export type AppMode = "pre-match" | "post-match" | "player";
 
 const ALL_PROMPTS: Record<AppMode, { label: string; prompt: string; icon: string }[]> = {
-  captain: [
-    { label: "Field placement for death overs", prompt: "What are the best field placements for the death overs when defending a total of 160 in a T20 match?", icon: "target" },
-    { label: "Bowling strategy against left-handers", prompt: "Suggest a bowling strategy against left-handed batters in powerplay overs.", icon: "zap" },
-    { label: "Chase strategy for run targets", prompt: "How should a captain plan a run chase of 180 in a T20?", icon: "trending-up" },
-    { label: "Spin bowling tactics on turning pitch", prompt: "What bowling changes and field adjustments should I make when the pitch starts turning?", icon: "rotate-ccw" },
-    { label: "DLS method situation planning", prompt: "How should I adjust strategy when rain is expected during a chase?", icon: "cloud-rain" },
-    { label: "Powerplay bowling plan", prompt: "What's the best bowling plan for the first 6 overs in a T20?", icon: "zap" },
-    { label: "Setting a batting order", prompt: "How should I structure my batting order for a 200+ run chase?", icon: "trending-up" },
-    { label: "Middle overs pressure tactics", prompt: "How do I maintain pressure through the middle overs with spin and medium pace?", icon: "target" },
-    { label: "Handling a collapse", prompt: "What tactical changes should I make when we lose 3 quick wickets?", icon: "shield" },
-    { label: "Part-time bowler usage", prompt: "When and how should I use part-time bowlers effectively?", icon: "rotate-ccw" },
-    { label: "New ball strategy", prompt: "What's the best approach with the new ball in an ODI opening spell?", icon: "zap" },
-    { label: "Defending a low total", prompt: "How do I set fields and rotate bowlers when defending under 140 in a T20?", icon: "target" },
+  "pre-match": [
+    { label: "Set optimal batting order", prompt: "Based on my squad, what's the optimal batting order for today's T20 match?", icon: "trending-up" },
+    { label: "Bowling rotation plan", prompt: "How should I rotate my bowlers across 20 overs against a strong top order?", icon: "rotate-ccw" },
+    { label: "Powerplay strategy", prompt: "What's the best powerplay bowling plan to restrict the opposition in the first 6 overs?", icon: "zap" },
+    { label: "Field placements for spinners", prompt: "What field should I set when my spinner bowls against a left-right batting combination?", icon: "target" },
+    { label: "Chase strategy planning", prompt: "We need to chase 185 in a T20. How should I structure the innings phase by phase?", icon: "trending-up" },
+    { label: "Death over bowling plan", prompt: "Which bowlers should I save for the death overs and what lengths should they bowl?", icon: "flame" },
+    { label: "Toss decision analysis", prompt: "It's a damp morning with expected afternoon sun. Should I bat or bowl first and why?", icon: "target" },
+    { label: "Handling left-right combination", prompt: "The opposition opens with a left-right pair. How do I adjust field and bowling?", icon: "rotate-ccw" },
+    { label: "Opposition weakness analysis", prompt: "Based on the scorecards I've uploaded, what are the main weaknesses in the opposition's batting?", icon: "eye" },
+    { label: "Middle overs pressure plan", prompt: "How do I build pressure in overs 7-15 with medium pace and spin?", icon: "shield" },
+    { label: "Backup bowling options", prompt: "My main seamer is injured. How do I redistribute overs among the remaining attack?", icon: "zap" },
+    { label: "Batting order for ODI", prompt: "How should I structure the batting order in a 50-over match to maximise total runs?", icon: "trending-up" },
   ],
-  skills: [
+  "post-match": [
+    { label: "Analyse today's scorecard", prompt: "Here's the scorecard from today's match. How did we perform vs the plan?", icon: "chart-bar" },
+    { label: "Bowling performance review", prompt: "Review the bowling figures and tell me who executed the plan and who didn't.", icon: "rotate-ccw" },
+    { label: "Batting collapse analysis", prompt: "We lost 5 wickets in 4 overs in the middle. What went wrong?", icon: "trending-down" },
+    { label: "Death overs review", prompt: "We conceded 65 runs in the last 5 overs. What can we change next time?", icon: "flame" },
+    { label: "Plan vs actual comparison", prompt: "Compare what we planned before the match with how the game actually went.", icon: "target" },
+    { label: "Opposition batsman patterns", prompt: "Looking at the scorecard, what scoring patterns did the opposition's top order show?", icon: "eye" },
+    { label: "Identify turning points", prompt: "At what point did the match swing and what decisions caused it?", icon: "zap" },
+    { label: "Fielding lapses review", prompt: "Were there any fielding decisions or drops that materially affected the outcome?", icon: "shield" },
+    { label: "Powerplay review", prompt: "How did our powerplay bowling and batting compare to what we targeted?", icon: "trending-up" },
+    { label: "Lessons for next match", prompt: "Based on today's analysis, what are the top 3 things we must do differently next game?", icon: "target" },
+    { label: "Player standout performances", prompt: "Who were the standout performers and what specifically did they do well?", icon: "award" },
+    { label: "Share analysis with team", prompt: "Summarise the key takeaways from today so I can share with the squad on WhatsApp.", icon: "share" },
+  ],
+  player: [
     { label: "Improve cover drive technique", prompt: "How do I improve my cover drive? I keep getting out playing it.", icon: "swords" },
     { label: "Fast bowling action analysis", prompt: "What are the key elements of a good fast bowling action to generate pace safely?", icon: "flame" },
     { label: "Playing spin effectively", prompt: "How can I improve my technique against spin bowling?", icon: "eye" },
@@ -180,20 +284,6 @@ const ALL_PROMPTS: Record<AppMode, { label: string; prompt: string; icon: string
     { label: "Reverse swing bowling", prompt: "What technique and ball management is needed for reverse swing?", icon: "flame" },
     { label: "Wicketkeeping footwork", prompt: "What drills improve wicketkeeping footwork and positioning?", icon: "hand" },
     { label: "Mental game under pressure", prompt: "How do I stay focused and handle pressure in important match situations?", icon: "eye" },
-  ],
-  equipment: [
-    { label: "Best bats for power hitting", prompt: "What are the best cricket bats for power hitting in T20 cricket?", icon: "award" },
-    { label: "Choosing cricket shoes", prompt: "What should I look for when choosing cricket shoes for different surfaces?", icon: "footprints" },
-    { label: "Protective gear guide", prompt: "What protective gear do I need and what standards should each piece meet?", icon: "shield" },
-    { label: "Bowling machine comparison", prompt: "Which bowling machines are best for practice at different skill levels?", icon: "settings" },
-    { label: "Ball selection guide", prompt: "How do different cricket balls (Kookaburra, Dukes, SG) compare?", icon: "circle" },
-    { label: "Bat weight and balance", prompt: "How do I choose the right bat weight and balance for my style?", icon: "award" },
-    { label: "Gloves for different conditions", prompt: "What batting gloves work best in hot vs cold conditions?", icon: "hand" },
-    { label: "Helmet safety standards", prompt: "What safety standards should I look for in a cricket helmet?", icon: "shield" },
-    { label: "Kit bag essentials", prompt: "What should every cricketer have in their kit bag?", icon: "settings" },
-    { label: "Bat care and maintenance", prompt: "How do I properly knock in and maintain my cricket bat?", icon: "award" },
-    { label: "Training aids that work", prompt: "What training aids actually help improve cricket skills?", icon: "settings" },
-    { label: "Budget gear recommendations", prompt: "What's the best cricket equipment for someone on a tight budget?", icon: "circle" },
   ],
 };
 

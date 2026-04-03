@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { matches, deliveries, players, playerImages, equipment } from "@shared/schema";
+import { matches, deliveries, players, playerImages } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
 export async function seedDatabase() {
@@ -176,80 +176,6 @@ export async function seedDatabase() {
     },
   ]);
 
-  await db.insert(equipment).values([
-    {
-      name: "Gray-Nicolls Kronus 800", category: "Cricket Bat", brand: "Gray-Nicolls",
-      description: "Premium English willow bat with massive edges and a high sweet spot. Ideal for aggressive stroke play with excellent power through the V.",
-      rating: 4.7, priceRange: "$350-$500",
-      suitableFor: ["Professional", "Advanced club", "Power hitters"],
-      pros: ["Grade 1 English willow", "Massive edges for power", "Well-balanced pick-up", "Traditional pressing technique"],
-      cons: ["Premium price point", "Requires knocking in", "May be heavy for some players"],
-      specifications: { weight: "2lb 8oz - 2lb 12oz", grains: "6-12", edgeThickness: "38mm", sweetSpot: "Mid-High" },
-    },
-    {
-      name: "Kookaburra Ghost Pro", category: "Cricket Bat", brand: "Kookaburra",
-      description: "A beautifully crafted bat with a classic profile. Features Kookaburra's signature clean hitting and well-rounded performance.",
-      rating: 4.5, priceRange: "$300-$450",
-      suitableFor: ["Professional", "Semi-professional", "All-round batters"],
-      pros: ["Excellent balance", "Clean grain structure", "Good for front foot play", "Durable willow"],
-      cons: ["Sweet spot takes time to develop", "Limited edge size", "Conservative design"],
-      specifications: { weight: "2lb 7oz - 2lb 11oz", grains: "7-14", edgeThickness: "36mm", sweetSpot: "Mid" },
-    },
-    {
-      name: "Masuri V-Series Elite", category: "Helmet", brand: "Masuri",
-      description: "International standard cricket helmet with titanium grille and superior ventilation. Meets latest ICC safety standards for all levels of play.",
-      rating: 4.8, priceRange: "$200-$350",
-      suitableFor: ["Professional", "Club cricket", "All formats"],
-      pros: ["Titanium grille for visibility", "BSI certified", "Excellent ventilation", "Lightweight design", "Adjustable fit system"],
-      cons: ["Higher price than entry-level", "Titanium grille needs careful handling", "Limited color options"],
-      specifications: { standard: "BSI 7928:2013", grilleMaterial: "Titanium", weight: "600g", ventilation: "12 air vents" },
-    },
-    {
-      name: "SG Sierra 350", category: "Cricket Bat", brand: "SG",
-      description: "Indian-made bat crafted from Grade 1 Kashmir willow with an expanded sweet spot. Known for excellent performance on subcontinental pitches.",
-      rating: 4.3, priceRange: "$150-$250",
-      suitableFor: ["Club cricket", "League matches", "Spin-friendly conditions"],
-      pros: ["Excellent value for money", "Great for Indian conditions", "Light pick-up", "Pre-knocked profile"],
-      cons: ["Kashmir willow has shorter lifespan", "Less power than English willow", "Limited availability outside India"],
-      specifications: { weight: "2lb 5oz - 2lb 9oz", willowType: "Grade 1 Kashmir", edgeThickness: "34mm", sweetSpot: "Low-Mid" },
-    },
-    {
-      name: "New Balance CK4030 v5", category: "Cricket Shoes", brand: "New Balance",
-      description: "Lightweight cricket shoes with full-length cushioning and spike outsole for superior grip. Designed for fast bowlers and agile fielders.",
-      rating: 4.6, priceRange: "$120-$180",
-      suitableFor: ["Fast bowlers", "Fielders", "All surfaces"],
-      pros: ["REVlite midsole cushioning", "Excellent ankle support", "Durable rubber spikes", "Breathable mesh upper", "Lightweight design"],
-      cons: ["Spikes wear out on hard surfaces", "Narrow fit for wide feet", "Limited color choices"],
-      specifications: { weight: "310g", soleType: "Full metal spike", cushioning: "REVlite", upperMaterial: "Mesh + synthetic" },
-    },
-    {
-      name: "BOLA Professional Bowling Machine", category: "Bowling Machine", brand: "BOLA",
-      description: "Programmable bowling machine capable of simulating all types of deliveries. Used by international cricket teams for practice sessions.",
-      rating: 4.9, priceRange: "$2000-$3500",
-      suitableFor: ["Cricket academies", "Professional teams", "Serious club setups"],
-      pros: ["Programmable delivery sequences", "Simulates pace up to 95mph", "Spin and swing capabilities", "Remote control operation", "Durable construction"],
-      cons: ["Very expensive", "Requires power source", "Heavy and not easily portable", "Maintenance costs"],
-      specifications: { maxSpeed: "95 mph", deliveryTypes: "Pace, Swing, Spin, Seam", ballCapacity: "30 balls", power: "240V mains" },
-    },
-    {
-      name: "Kookaburra Turf Ball (Red)", category: "Cricket Ball", brand: "Kookaburra",
-      description: "Official match ball used in international cricket in Australia, New Zealand, and South Africa. Four-piece construction with hand-stitched seam.",
-      rating: 4.4, priceRange: "$30-$50",
-      suitableFor: ["First-class cricket", "Test matches", "Professional leagues"],
-      pros: ["Consistent seam quality", "Good swing for first 15-20 overs", "Durable lacquer coating", "Approved for international cricket"],
-      cons: ["Seam flattens faster than Dukes", "Less lateral movement after 30 overs", "Lacquer can chip on abrasive pitches"],
-      specifications: { weight: "155.9-163g", circumference: "224-229mm", construction: "Four-piece", seamType: "Hand-stitched" },
-    },
-    {
-      name: "SS Gladiator Batting Pads", category: "Batting Pads", brand: "SS (Sareen Sports)",
-      description: "Lightweight yet protective batting pads with triple-wing bolster and high-density foam. Designed for maximum mobility and protection.",
-      rating: 4.2, priceRange: "$60-$100",
-      suitableFor: ["Club cricket", "League matches", "Training"],
-      pros: ["Lightweight construction", "Good knee protection", "Easy strap system", "Affordable for quality", "Available in multiple sizes"],
-      cons: ["Not as protective as premium models", "Straps wear over time", "Minimal shin coverage"],
-      specifications: { padding: "High-density PU foam", kneeBolster: "Triple-wing", weight: "750g per pad", sizes: "Youth, Adult, Large Adult" },
-    },
-  ]);
 
   const allPlayers = await db.select().from(players);
   const imageData: { playerId: number; role: string; actionType: string; description: string; imageUrl: string }[] = [];

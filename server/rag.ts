@@ -3,16 +3,21 @@ import type { AppMode } from "@shared/schema";
 
 function extractKeywords(query: string): string[] {
   const stopWords = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "shall", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "but", "about", "against", "not", "or", "and", "if", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "how", "when", "where", "why", "all", "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "nor", "only", "own", "same", "so", "than", "too", "very", "just", "because", "also", "my", "your", "his", "her", "its", "our", "their", "i", "me", "we", "you", "he", "she", "it", "they", "them", "us"]);
-
   return query.toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(w => w.length > 2 && !stopWords.has(w));
 }
 
-async function getCaptainContext(query: string): Promise<string> {
+async function getPreMatchContext(query: string, squadContext?: string): Promise<string> {
   const keywords = extractKeywords(query);
   const parts: string[] = [];
+
+  if (squadContext) {
+    parts.push("=== SQUAD ROSTER ===");
+    parts.push(squadContext);
+    parts.push("---");
+  }
 
   const matchResults = await Promise.all(
     keywords.slice(0, 6).map(kw => storage.searchMatches(kw))
@@ -20,30 +25,23 @@ async function getCaptainContext(query: string): Promise<string> {
   const uniqueMatches = new Map();
   matchResults.flat().forEach(m => uniqueMatches.set(m.id, m));
   let relevantMatches = Array.from(uniqueMatches.values()).slice(0, 5);
-
   if (relevantMatches.length === 0) {
     const allMatches = await storage.getMatches();
     relevantMatches = allMatches.slice(0, 3);
   }
 
   if (relevantMatches.length > 0) {
-    parts.push("=== RELEVANT MATCH DATA ===");
+    parts.push("=== REFERENCE MATCH DATA ===");
     for (const match of relevantMatches) {
       parts.push(`Match: ${match.matchTitle}`);
       parts.push(`Teams: ${match.team1} vs ${match.team2} | Type: ${match.matchType}`);
       parts.push(`Venue: ${match.venue} | Date: ${match.matchDate}`);
       parts.push(`Result: ${match.result}`);
       if (match.scorecardUrl) parts.push(`Scorecard: ${match.scorecardUrl}`);
-      if (match.tossWinner) parts.push(`Toss: ${match.tossWinner} won, chose to ${match.tossDecision}`);
       if (match.team1Score) parts.push(`${match.team1}: ${match.team1Score}`);
       if (match.team2Score) parts.push(`${match.team2}: ${match.team2Score}`);
-
       const delivs = await storage.getDeliveriesByMatch(match.id);
       if (delivs.length > 0) {
-        const wickets = delivs.filter(d => d.isWicket);
-        const totalRuns = delivs.reduce((s, d) => s + d.totalRuns, 0);
-        parts.push(`Ball-by-ball: ${delivs.length} deliveries, ${totalRuns} runs, ${wickets.length} wickets`);
-
         const bowlerStats: Record<string, { runs: number; wickets: number; balls: number }> = {};
         delivs.forEach(d => {
           if (!bowlerStats[d.bowler]) bowlerStats[d.bowler] = { runs: 0, wickets: 0, balls: 0 };
@@ -56,21 +54,6 @@ async function getCaptainContext(query: string): Promise<string> {
           const overs = Math.floor(stats.balls / 6) + "." + (stats.balls % 6);
           parts.push(`  ${bowler}: ${overs}-${stats.runs}-${stats.wickets}`);
         });
-
-        if (wickets.length > 0) {
-          parts.push("Wickets:");
-          wickets.forEach(w => {
-            parts.push(`  ${w.batter} - ${w.wicketType}${w.fielder ? ` (${w.fielder})` : ""} | Over ${w.overNumber}.${w.ballNumber} | Delivery: ${w.deliveryType || "N/A"}`);
-          });
-        }
-
-        const fieldPositions = delivs.filter(d => d.fieldPositions && d.fieldPositions.length > 0).slice(0, 5);
-        if (fieldPositions.length > 0) {
-          parts.push("Sample field positions:");
-          fieldPositions.forEach(d => {
-            parts.push(`  Over ${d.overNumber}.${d.ballNumber}: ${d.fieldPositions?.join(", ")}`);
-          });
-        }
       }
       parts.push("---");
     }
@@ -82,9 +65,8 @@ async function getCaptainContext(query: string): Promise<string> {
   const uniquePlayers = new Map();
   playerResults.flat().forEach(p => uniquePlayers.set(p.id, p));
   const relevantPlayers = Array.from(uniquePlayers.values()).slice(0, 5);
-
   if (relevantPlayers.length > 0) {
-    parts.push("=== RELEVANT PLAYER PROFILES ===");
+    parts.push("=== PLAYER PROFILES ===");
     relevantPlayers.forEach(p => {
       parts.push(`${p.name} (${p.country}) - ${p.role}`);
       if (p.battingStyle) parts.push(`  Batting: ${p.battingStyle}`);
@@ -97,10 +79,54 @@ async function getCaptainContext(query: string): Promise<string> {
   return parts.join("\n");
 }
 
-async function getSkillsContext(query: string): Promise<string> {
-  const keywords = extractKeywords(query);
+async function getPostMatchContext(query: string, prePlan?: string): Promise<string> {
   const parts: string[] = [];
 
+  if (prePlan) {
+    parts.push("=== PRE-MATCH PLAN ===");
+    parts.push(prePlan);
+    parts.push("---");
+  }
+
+  const keywords = extractKeywords(query);
+  const matchResults = await Promise.all(
+    keywords.slice(0, 4).map(kw => storage.searchMatches(kw))
+  );
+  const uniqueMatches = new Map();
+  matchResults.flat().forEach(m => uniqueMatches.set(m.id, m));
+  let relevantMatches = Array.from(uniqueMatches.values()).slice(0, 3);
+  if (relevantMatches.length === 0) {
+    const allMatches = await storage.getMatches();
+    relevantMatches = allMatches.slice(0, 2);
+  }
+  if (relevantMatches.length > 0) {
+    parts.push("=== REFERENCE MATCH DATA ===");
+    for (const match of relevantMatches) {
+      parts.push(`Match: ${match.matchTitle} | Result: ${match.result}`);
+      if (match.scorecardUrl) parts.push(`Scorecard: ${match.scorecardUrl}`);
+      parts.push("---");
+    }
+  }
+
+  return parts.join("\n");
+}
+
+async function getPlayerContext(query: string, playerName?: string, matchContext?: string): Promise<string> {
+  const parts: string[] = [];
+
+  if (playerName) {
+    parts.push(`=== PLAYER CONTEXT ===`);
+    parts.push(`Player name: ${playerName}`);
+    parts.push("---");
+  }
+
+  if (matchContext) {
+    parts.push("=== MATCH ANALYSIS CONTEXT ===");
+    parts.push(matchContext);
+    parts.push("---");
+  }
+
+  const keywords = extractKeywords(query);
   const playerResults = await Promise.all(
     keywords.slice(0, 3).map(kw => storage.searchPlayers(kw))
   );
@@ -117,27 +143,16 @@ async function getSkillsContext(query: string): Promise<string> {
       if (p.specialization) parts.push(`  Specialization: ${p.specialization}`);
       if (p.strengths?.length) parts.push(`  Key strengths: ${p.strengths.join(", ")}`);
       if (p.weaknesses?.length) parts.push(`  Areas to improve: ${p.weaknesses.join(", ")}`);
-      if (p.stats) parts.push(`  Career stats: ${JSON.stringify(p.stats)}`);
-
-      const images = await storage.getPlayerImages(p.id);
-      if (images.length > 0) {
-        parts.push(`  Reference images:`);
-        images.forEach(img => {
-          parts.push(`    - [${img.role}/${img.actionType}] ${img.description}`);
-        });
-      }
     }
   }
 
   const delivFilters: Record<string, string> = {};
   const shotTypes = ["cover drive", "pull", "sweep", "cut", "loft", "slog", "flick", "hook", "straight drive", "reverse sweep"];
   const deliveryTypes = ["yorker", "bouncer", "slower ball", "outswinger", "inswinger", "leg spin", "off spin", "doosra", "googly", "carrom ball"];
-
   for (const kw of keywords) {
     if (shotTypes.some(s => s.includes(kw))) delivFilters.shotType = kw;
     if (deliveryTypes.some(d => d.includes(kw))) delivFilters.deliveryType = kw;
   }
-
   if (Object.keys(delivFilters).length > 0) {
     const delivs = await storage.searchDeliveries(delivFilters);
     if (delivs.length > 0) {
@@ -154,63 +169,18 @@ async function getSkillsContext(query: string): Promise<string> {
   return parts.join("\n");
 }
 
-async function getEquipmentContext(query: string): Promise<string> {
-  const keywords = extractKeywords(query);
-  const parts: string[] = [];
-
-  const equipResults = await Promise.all(
-    keywords.slice(0, 6).map(kw => storage.searchEquipment(kw))
-  );
-  const uniqueEquip = new Map();
-  equipResults.flat().forEach(e => uniqueEquip.set(e.id, e));
-  let relevant = Array.from(uniqueEquip.values()).slice(0, 10);
-
-  if (relevant.length === 0) {
-    const allEquip = await storage.getEquipment();
-    relevant = allEquip.slice(0, 5);
-  }
-
-  if (relevant.length > 0) {
-    parts.push("=== EQUIPMENT DATABASE ===");
-    relevant.forEach(e => {
-      parts.push(`${e.name} by ${e.brand} - ${e.category}`);
-      parts.push(`  Rating: ${e.rating}/5 | Price Range: ${e.priceRange || "N/A"}`);
-      parts.push(`  ${e.description}`);
-      if (e.suitableFor?.length) parts.push(`  Suitable for: ${e.suitableFor.join(", ")}`);
-      if (e.pros?.length) parts.push(`  Pros: ${e.pros.join(", ")}`);
-      if (e.cons?.length) parts.push(`  Cons: ${e.cons.join(", ")}`);
-      if (e.specifications) parts.push(`  Specs: ${JSON.stringify(e.specifications)}`);
-    });
-  }
-
-  const playerResults = await Promise.all(
-    keywords.slice(0, 2).map(kw => storage.searchPlayers(kw))
-  );
-  const uniquePlayers = new Map();
-  playerResults.flat().forEach(p => uniquePlayers.set(p.id, p));
-  const relevantPlayers = Array.from(uniquePlayers.values()).slice(0, 5);
-
-  if (relevantPlayers.length > 0) {
-    parts.push("\n=== PLAYER PROFILES (for equipment context) ===");
-    relevantPlayers.forEach(p => {
-      parts.push(`${p.name} (${p.country}) - ${p.role}`);
-      if (p.battingStyle) parts.push(`  Batting style: ${p.battingStyle}`);
-      if (p.bowlingStyle) parts.push(`  Bowling style: ${p.bowlingStyle}`);
-      if (p.specialization) parts.push(`  Specialization: ${p.specialization}`);
-    });
-  }
-
-  return parts.join("\n");
-}
-
-export async function getRAGContext(mode: AppMode, query: string): Promise<string> {
+export async function getRAGContext(
+  mode: AppMode,
+  query: string,
+  opts?: { squadContext?: string; prePlan?: string; playerName?: string; matchContext?: string }
+): Promise<string> {
   switch (mode) {
-    case "captain":
-      return getCaptainContext(query);
-    case "skills":
-      return getSkillsContext(query);
-    case "equipment":
-      return getEquipmentContext(query);
+    case "pre-match":
+      return getPreMatchContext(query, opts?.squadContext);
+    case "post-match":
+      return getPostMatchContext(query, opts?.prePlan);
+    case "player":
+      return getPlayerContext(query, opts?.playerName, opts?.matchContext);
     default:
       return "";
   }
@@ -226,80 +196,94 @@ CRITICAL OUTPUT FORMAT RULES:
 **What Needs Improvement:** (1-3 bullet points of areas to fix)  
 **Next Steps:** (2-4 specific, actionable steps to take)
 
-- If the user provides their profile/context (e.g., [CAPTAIN CONTEXT] or [PLAYER PROFILE]), use that info to personalize your advice immediately without re-asking for it.
-- If the user says "more detail" or "explain more", THEN you can give a longer, comprehensive response.
-- When analyzing uploaded scorecards, identify patterns across the scorecards and provide a post-match analysis covering what went well and what didn't.`;
+- If the user says "more detail" or "explain more", THEN you can give a longer, comprehensive response.`;
 
-const SYSTEM_PROMPTS: Record<AppMode, string> = {
-  captain: `You are CricketIQ Captain's Strategy Advisor, an expert cricket tactical analyst. You help cricket captains with:
-- Field placement strategies for different match situations
-- Bowling changes and rotation plans
-- Batting order decisions and run chase strategies
-- DLS calculations and rain-affected match planning
-- Powerplay and death over tactics
-- Post-match analysis from uploaded scorecards
+const SYSTEM_PROMPTS: Record<string, string> = {
+  "pre-match": `You are CricketIQ Pre-Match Planning Advisor, an expert cricket tactical analyst helping captains prepare for their next match.
 
-Use the match data and player profiles provided to give data-driven tactical advice. Be specific about field positions (e.g., "deep mid-wicket", "short fine leg") and bowling plans. Use bullet points.
+You help captains with:
+- Optimal batting order selection based on the squad and opposition
+- Bowling rotation and spell allocation
+- Field placement strategies for different phases (powerplay, middle overs, death)
+- Opposition analysis and how to exploit their weaknesses
+- Toss decision guidance based on conditions
+
+Your responses must include:
+
+**Batting Order:** List 1-11 with a brief rationale for each position (use the squad roster provided)
+**Bowling Plan:** Spell allocations, who bowls in powerplay/middle/death and why
+**Key Tactics:** 2-3 specific tactical priorities for the match
 ${OUTPUT_FORMAT_INSTRUCTION}
 
-SCORECARD ANALYSIS: When the user uploads one or more scorecards:
-1. Analyze each scorecard image carefully
-2. Identify key turning points, strong performances, and weaknesses
-3. Compare across multiple scorecards if provided to find patterns
-4. Provide tactical recommendations for future matches based on the analysis
-
-MATCH CITATIONS: When you reference relevant match situations from the provided data, you MUST include them at the END of your response using this EXACT format:
+MATCH CITATIONS: When you reference relevant match situations from the provided data, include them at the END of your response:
 
 <<CITATION>>
-Match Title (e.g., "India vs Australia, T20 World Cup 2024")
-Key details: what happened, result, and why it's relevant
+Match Title
+Key details and why it's relevant
 Scorecard: [Full Scorecard](URL_FROM_DATA)
 <<END_CITATION>>
 
-CRITICAL RULES FOR CITATIONS:
-- ALWAYS include the scorecard URL link when one is provided in the match data (look for "Scorecard:" lines).
-- Format the URL as a markdown link: [Full Scorecard](url)
-- If no scorecard URL is in the data, generate one using this pattern: https://www.espncricinfo.com/search?q=TEAM1+vs+TEAM2+YEAR
-- Include 1-3 citations per response when relevant match data is available.
-- Place ALL citations BEFORE the <<FOLLOWUP>> tag if one exists.
-- NEVER cite a match without providing a URL link.`,
+Include 1-2 citations per response when relevant. Place citations BEFORE the <<FOLLOWUP>> tag.`,
 
-  skills: `You are CricketIQ Skill Building Coach, an expert cricket technique analyst and coach. You help cricketers with:
-- Batting technique analysis (stance, grip, footwork, shot execution)
-- Bowling action biomechanics (run-up, delivery stride, arm action, follow-through)
-- Fielding drills and improvement plans
-- Mental conditioning and match awareness
-- Practice routines and training programs
+  "post-match": `You are CricketIQ Post-Match Analysis Advisor, helping captains analyse performance and learn from each game.
+
+When the captain uploads scorecard images, analyse them carefully and compare against the pre-match plan provided.
+
+Your analysis must follow this structure:
+
+**What Went to Plan:** What the team executed as intended
+**What Didn't Go to Plan:** Where execution deviated from strategy  
+**Top Performers:** Who stood out and why
+**Key Turning Points:** The moments that swung the match
+**Team Takeaways:** 2-3 things to carry forward to the next match
 ${OUTPUT_FORMAT_INSTRUCTION}
 
-MANDATORY DRILLS: You MUST ALWAYS include at least 2 specific drills in EVERY response to help the user improve the area they're asking about. Format drills like:
+SCORECARD ANALYSIS: When scorecards are uploaded:
+1. Read each image carefully — extract runs, wickets, extras, bowling figures
+2. Compare actual performance against the pre-match plan (provided in context)
+3. Identify patterns across multiple scorecards if provided
+
+MATCH CITATIONS: Include citations at the END when referencing match data:
+
+<<CITATION>>
+Match Title
+Key details and why it's relevant
+Scorecard: [Full Scorecard](URL_FROM_DATA)
+<<END_CITATION>>`,
+
+  "player": `You are CricketIQ Personal Performance Coach, helping individual cricketers understand and improve their performance.
+
+You receive the player's name, the post-match analysis, and the scorecard. Address the player DIRECTLY by name in your responses.
+
+You help players with:
+- Understanding their personal contribution to the match vs what was planned
+- Specific technique improvements based on how they performed
+- Mental game and decision-making analysis
+- Actionable drills to address identified weaknesses
+
+${OUTPUT_FORMAT_INSTRUCTION}
+
+MANDATORY DRILLS: You MUST ALWAYS include at least 2 specific drills in EVERY response:
 
 **Drills to Try:**
 1. **[Drill Name]** - [Brief description, how to do it, sets/reps or duration]
 2. **[Drill Name]** - [Brief description, how to do it, sets/reps or duration]
 
-These drills must be practical, specific to the problem area, and doable at net practice or at home. Reference how professional players train these skills when relevant.`,
+IMAGE ANALYSIS: When scorecards are in context, refer to the player's specific figures. Be direct and personal — the player wants to know exactly what they did and how to improve it.`,
 
-  equipment: `You are CricketIQ Equipment Expert, a comprehensive cricket gear reviewer and advisor. You help cricketers with:
-- Cricket bat selection (willow grade, weight, balance, sweet spot)
-- Protective gear recommendations (helmets, pads, gloves, guards)
-- Cricket shoes for different surfaces
-- Training equipment and bowling machines
-- Equipment maintenance and care tips
+  "player-analysis": `You are CricketIQ Personal Performance Coach, helping individual cricketers understand and improve their performance.
+
+You receive the player's name, the post-match analysis, the pre-match plan, and the scorecard images. Address the player DIRECTLY by name.
+
+Be personal, direct, and constructive. The player is using this to understand their own game.
+
 ${OUTPUT_FORMAT_INSTRUCTION}
 
-PERSONALIZED RECOMMENDATIONS: When recommending equipment:
-1. Consider the user's playing position, level, and style.
-2. Reference what professional players in similar positions use.
-3. Suggest equipment from the database that matches their profile.
+MANDATORY DRILLS: Include at least 2 specific drills in EVERY response:
 
-YOUTUBE & ARTICLE REFERENCES: Include relevant review links at the END of your response using this EXACT format:
-
-<<REFERENCE>>
-[Review Title - Equipment Name](https://www.youtube.com/results?search_query=cricket+equipment+name+review)
-<<END_REFERENCE>>
-
-Include 2-5 reference links per response. Place ALL references BEFORE the <<FOLLOWUP>> tag if one exists.`,
+**Drills to Try:**
+1. **[Drill Name]** - [Brief description, how to do it, sets/reps or duration]
+2. **[Drill Name]** - [Brief description, how to do it, sets/reps or duration]`,
 };
 
 const MULTI_TURN_INSTRUCTION = `
@@ -312,38 +296,30 @@ You are having a multi-turn conversation. These rules are MANDATORY:
 
 <<FOLLOWUP>>Your follow-up question here?<<END_FOLLOWUP>>
 
-This is NOT optional. You MUST include the <<FOLLOWUP>> and <<END_FOLLOWUP>> tags in every response. The tags are required for the UI to render properly. If you forget them, the user experience breaks.
+This is NOT optional. You MUST include the <<FOLLOWUP>> and <<END_FOLLOWUP>> tags in every response. The tags are required for the UI to render properly.
 3. The follow-up question should ask for specific details that would help you give better, more personalized advice in the next response.
-4. If the user says "just give me your best answer" or "skip the questions", give your comprehensive answer WITHOUT the follow-up tags.
+4. If the user says "just give me your best answer" or "skip the questions", give your comprehensive answer WITHOUT the follow-up tags.`;
 
-Example flow:
-- User asks about field placement for death overs
-- You: Give solid general advice about death over field placements with specific positions, THEN ask "<<FOLLOWUP>>What format is this match — T20, ODI, or Test — and what's the typical score range you're defending?<<END_FOLLOWUP>>"
-- User answers: "T20, defending 170"
-- You: Give more tailored T20-specific advice for defending 170, THEN ask "<<FOLLOWUP>>Which bowlers do you have available for the death — any quality yorker bowlers or mainly medium pacers?<<END_FOLLOWUP>>"
-- User answers: "Two pace bowlers who bowl good yorkers"
-- You: Give your final, highly specific plan with exact field placements, over-by-over bowling plan, no more questions.`;
-
-const FALLBACK_FOLLOWUPS: Record<AppMode, string[]> = {
-  captain: [
-    "What format is this match (T20, ODI, or Test) and what score are you defending or chasing?",
-    "Which bowlers do you have available and what are their strengths (yorkers, slower balls, spin)?",
-    "What are the key opposition batters' strengths and preferred scoring zones?",
+const FALLBACK_FOLLOWUPS: Record<string, string[]> = {
+  "pre-match": [
+    "What format is this match (T20, ODI, or Test) and who are you playing against?",
+    "Which bowlers do you have available and what are their main strengths?",
+    "Are there any injury concerns or unavailable players I should factor into the plan?",
   ],
-  skills: [
-    "What is your current skill level (beginner, club, district, or professional) and how long have you been playing?",
-    "Are you primarily a batter, bowler, or all-rounder, and which specific area would you like to focus on improving?",
+  "post-match": [
+    "What format was the match and what was the result?",
+    "Which phases of the game do you feel went furthest from the plan?",
+    "What specific areas would you like me to focus the analysis on?",
+  ],
+  "player": [
+    "What is your primary role in the team — batter, bowler, or all-rounder?",
+    "Which specific aspect of your performance are you most keen to improve?",
     "What specific match situations or deliveries are you finding most challenging right now?",
-  ],
-  equipment: [
-    "What is your budget range, and what level do you play at (casual, club, district, or professional)?",
-    "What playing conditions do you typically face (hard pitches, green tops, spin-friendly, indoor nets)?",
-    "Do you have any specific brand preferences or requirements like weight, size, or material?",
   ],
 };
 
 export function enforceCitations(response: string, mode: AppMode, ragContext: string): string {
-  if (mode === "captain" && ragContext.includes("=== RELEVANT MATCH DATA ===")) {
+  if ((mode === "pre-match" || mode === "post-match") && ragContext.includes("=== REFERENCE MATCH DATA ===")) {
     if (!response.includes("<<CITATION>>") || !response.includes("<<END_CITATION>>")) {
       const matchLines = ragContext.split("\n");
       const matchTitles: string[] = [];
@@ -351,21 +327,15 @@ export function enforceCitations(response: string, mode: AppMode, ragContext: st
       const matchUrls: string[] = [];
       for (let i = 0; i < matchLines.length; i++) {
         if (matchLines[i].startsWith("Match: ")) {
-          matchTitles.push(matchLines[i].replace("Match: ", ""));
-          const detailParts: string[] = [];
+          matchTitles.push(matchLines[i].replace("Match: ", "").split("|")[0].trim());
           let url = "";
-          for (let j = i + 1; j < Math.min(i + 8, matchLines.length); j++) {
-            if (matchLines[j].startsWith("Result: ")) {
-              detailParts.push(matchLines[j]);
-            }
-            if (matchLines[j].startsWith("Teams: ")) {
-              detailParts.push(matchLines[j]);
-            }
-            if (matchLines[j].startsWith("Scorecard: ")) {
-              url = matchLines[j].replace("Scorecard: ", "");
-            }
+          let detail = "";
+          for (let j = i + 1; j < Math.min(i + 6, matchLines.length); j++) {
+            if (matchLines[j].startsWith("Scorecard: ")) url = matchLines[j].replace("Scorecard: ", "");
+            if (matchLines[j].startsWith("Match: ") || matchLines[j] === "---") break;
+            detail = matchLines[j];
           }
-          matchDetails.push(detailParts.join(" | "));
+          matchDetails.push(detail);
           matchUrls.push(url);
         }
       }
@@ -385,67 +355,93 @@ export function enforceCitations(response: string, mode: AppMode, ragContext: st
   return response;
 }
 
-export function enforceReferences(response: string, mode: AppMode, ragContext: string): string {
-  if (mode === "equipment" && ragContext.includes("=== EQUIPMENT DATABASE ===")) {
-    if (!response.includes("<<REFERENCE>>") || !response.includes("<<END_REFERENCE>>")) {
-      const equipLines = ragContext.split("\n");
-      const equipNames: string[] = [];
-      for (const line of equipLines) {
-        const match = line.match(/^(.+?) by (.+?) - (.+)$/);
-        if (match) {
-          equipNames.push(match[1]);
-        }
-      }
-      if (equipNames.length > 0) {
-        const searchTerms = equipNames.slice(0, 3).map(name => {
-          const encoded = encodeURIComponent(`cricket ${name} review`);
-          return `[${name} Review](https://www.youtube.com/results?search_query=${encoded})`;
-        });
-        const refBlock = `\n\n<<REFERENCE>>\n${searchTerms.join("\n")}\n<<END_REFERENCE>>`;
-        const followUpIdx = response.indexOf("<<FOLLOWUP>>");
-        if (followUpIdx > -1) {
-          return response.slice(0, followUpIdx).trim() + refBlock + "\n\n" + response.slice(followUpIdx);
-        }
-        return response.trim() + refBlock;
-      }
-    }
-  }
-  return response;
-}
-
 export function enforceFollowUp(response: string, mode: AppMode, exchangeCount: number): string {
   if (exchangeCount >= 3) {
     return response.replace(/<<FOLLOWUP>>[\s\S]*?<<END_FOLLOWUP>>/g, "").trim();
   }
-
   if (!response.includes("<<FOLLOWUP>>") || !response.includes("<<END_FOLLOWUP>>")) {
-    const fallbacks = FALLBACK_FOLLOWUPS[mode];
+    const fallbacks = FALLBACK_FOLLOWUPS[mode] || FALLBACK_FOLLOWUPS["player"];
     const idx = Math.min(exchangeCount - 1, fallbacks.length - 1);
     const fallbackQ = fallbacks[Math.max(0, idx)];
     return response.trim() + `\n\n<<FOLLOWUP>>${fallbackQ}<<END_FOLLOWUP>>`;
   }
-
   return response;
 }
 
-export function getSystemPrompt(mode: AppMode, exchangeCount: number, hasImage: boolean = false): string {
-  let prompt = SYSTEM_PROMPTS[mode] + MULTI_TURN_INSTRUCTION;
+export function getSystemPrompt(
+  mode: AppMode,
+  exchangeCount: number,
+  hasImage: boolean = false,
+  extra?: { playerName?: string; isPlayerAnalysisPage?: boolean }
+): string {
+  const promptKey = extra?.isPlayerAnalysisPage ? "player-analysis" : mode;
+  let prompt = (SYSTEM_PROMPTS[promptKey] || SYSTEM_PROMPTS["player"]) + MULTI_TURN_INSTRUCTION;
+
+  if (extra?.playerName) {
+    prompt = `The player's name is: ${extra.playerName}. Always address them by name.\n\n` + prompt;
+  }
 
   if (hasImage) {
-    prompt += `\n\nIMAGE ANALYSIS: The user has uploaded an image or GIF. Carefully analyze the visual content.
-- If it shows a cricket stance, batting grip, bowling action, or fielding position, provide detailed technique analysis.
-- Point out specific body mechanics: foot position, hip alignment, head position, elbow angle, wrist position, weight distribution.
-- Identify any flaws or areas for improvement with clear explanations.
-- Compare to ideal technique or how top professionals execute the same skill.
-- Provide specific drills or exercises to address any identified issues.
-- If the image shows equipment, analyze its condition, suitability, and provide recommendations.`;
+    prompt += `\n\nIMAGE ANALYSIS: The user has uploaded one or more images. Carefully analyse the visual content.
+- If it shows a scorecard, extract runs, wickets, bowling figures, partnerships, extras
+- If it shows a cricket action (batting/bowling), analyse technique in detail
+- If it shows a team sheet or player stats, use those figures to personalise your advice
+- Be specific — reference the actual numbers you can see`;
   }
 
   if (exchangeCount >= 3) {
-    prompt += `\n\nIMPORTANT: This conversation has had ${exchangeCount} user messages. The user has provided enough context through previous follow-ups. Give your FINAL, most comprehensive and personalized answer now. Do NOT include <<FOLLOWUP>> or <<END_FOLLOWUP>> tags. No more questions.`;
+    prompt += `\n\nIMPORTANT: This conversation has had ${exchangeCount} user messages. Give your FINAL, most comprehensive and personalized answer now. Do NOT include <<FOLLOWUP>> or <<END_FOLLOWUP>> tags. No more questions.`;
   } else {
     prompt += `\n\nREMINDER: This is exchange ${exchangeCount} of the conversation. You MUST include <<FOLLOWUP>>...<<END_FOLLOWUP>> tags at the end of your response with a relevant question. Do not forget.`;
   }
 
   return prompt;
+}
+
+export async function extractDataFromImage(
+  imageUrl: string,
+  extractionType: "squad" | "schedule" | "scorecard",
+  openai: any,
+  host: string
+): Promise<any> {
+  const prompts: Record<string, string> = {
+    squad: `You are analysing a team sheet or squad list image. Extract all player information you can see.
+Return a JSON array with this exact structure:
+[{"name": "Player Name", "role": "Batter|Bowler|All-rounder|Wicketkeeper", "battingStyle": "Right-hand bat|Left-hand bat|", "bowlingStyle": "Right-arm fast|Right-arm medium|Left-arm medium|Off-spin|Leg-spin|Left-arm spin|" }]
+Only return the JSON array, nothing else. If you cannot read certain fields, use empty string "".`,
+
+    schedule: `You are analysing a cricket fixture list or season schedule image. Extract all matches you can see.
+Return a JSON array with this exact structure:
+[{"opponent": "Team Name", "matchDate": "DD/MM/YYYY or similar date text", "venue": "Ground Name or City", "format": "T20|ODI|Test|T10"}]
+Only return the JSON array, nothing else. If you cannot read certain fields, use empty string "".`,
+
+    scorecard: `You are analysing a cricket scorecard image. Extract the match summary.
+Return a JSON object with this exact structure:
+{"team1": "Team Name", "team2": "Team Name", "team1Score": "runs/wickets (overs)", "team2Score": "runs/wickets (overs)", "result": "Team won by X runs/wickets", "topBatter": "Name - runs", "topBowler": "Name - figures", "summary": "2-3 sentence match summary"}
+Only return the JSON object, nothing else.`,
+  };
+
+  const absoluteUrl = imageUrl.startsWith("http") ? imageUrl : `${host}${imageUrl}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompts[extractionType] },
+          { type: "image_url", image_url: { url: absoluteUrl } },
+        ],
+      },
+    ],
+    max_completion_tokens: 2000,
+  });
+
+  const text = response.choices[0]?.message?.content || "[]";
+  try {
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return extractionType === "scorecard" ? {} : [];
+  }
 }
