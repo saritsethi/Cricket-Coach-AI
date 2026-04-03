@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getUserToken } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -103,7 +103,7 @@ export function PreMatchPage() {
       await Promise.all(
         teams.map(async (team) => {
           const res = await fetch(`/api/teams/${team.id}/fixtures`, {
-            headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+            headers: { "x-user-token": getUserToken() },
           });
           results[team.id] = await res.json();
         })
@@ -130,7 +130,7 @@ export function PreMatchPage() {
     enabled: !!selectedTeamId,
     queryFn: async () => {
       const res = await fetch(`/api/teams/${selectedTeamId}/squad`, {
-        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+        headers: { "x-user-token": getUserToken() },
       });
       return res.json();
     },
@@ -141,7 +141,7 @@ export function PreMatchPage() {
     enabled: !!selectedFixture?.id,
     queryFn: async () => {
       const res = await fetch(`/api/fixtures/${selectedFixture!.id}/plan`, {
-        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+        headers: { "x-user-token": getUserToken() },
       });
       return res.json();
     },

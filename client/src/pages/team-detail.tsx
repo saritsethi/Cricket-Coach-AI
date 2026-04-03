@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getUserToken } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -43,7 +43,7 @@ function SquadTab({ teamId }: { teamId: number }) {
     queryKey: ["/api/teams", teamId, "squad"],
     queryFn: async () => {
       const res = await fetch(`/api/teams/${teamId}/squad`, {
-        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+        headers: { "x-user-token": getUserToken() },
       });
       return res.json();
     },
@@ -354,7 +354,7 @@ function ScheduleTab({ teamId }: { teamId: number }) {
     queryKey: ["/api/teams", teamId, "fixtures"],
     queryFn: async () => {
       const res = await fetch(`/api/teams/${teamId}/fixtures`, {
-        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+        headers: { "x-user-token": getUserToken() },
       });
       return res.json();
     },
@@ -362,7 +362,7 @@ function ScheduleTab({ teamId }: { teamId: number }) {
 
   const ensureSchedule = async () => {
     const schedulesRes = await fetch(`/api/teams/${teamId}/schedules`, {
-      headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+      headers: { "x-user-token": getUserToken() },
     });
     const schedules = await schedulesRes.json();
     if (schedules.length > 0) return schedules[0].id;
@@ -660,7 +660,7 @@ export function TeamDetailPage() {
     queryKey: ["/api/teams", teamId],
     queryFn: async () => {
       const res = await fetch(`/api/teams/${teamId}`, {
-        headers: { "x-user-token": localStorage.getItem("cricketiq_user_token") || "" },
+        headers: { "x-user-token": getUserToken() },
       });
       return res.json();
     },

@@ -20,7 +20,6 @@ const sendMessageSchema = z.object({
   imageUrl: z.string().optional(),
   imageUrls: z.array(z.string()).optional(),
   playerName: z.string().optional(),
-  analysisId: z.number().optional(),
   squadContext: z.string().optional(),
   prePlan: z.string().optional(),
   matchContext: z.string().optional(),
@@ -112,7 +111,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
-      if (conversation.userToken && userToken !== conversation.userToken) {
+      if (!conversation.userToken || conversation.userToken !== userToken) {
         return res.status(403).json({ error: "Forbidden" });
       }
       const messages = await storage.getMessages(id);
@@ -150,7 +149,7 @@ export async function registerRoutes(
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
-      if (conversation.userToken && userToken !== conversation.userToken) {
+      if (!conversation.userToken || conversation.userToken !== userToken) {
         return res.status(403).json({ error: "Forbidden" });
       }
       await storage.deleteConversation(id);
@@ -171,7 +170,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Conversation not found" });
       }
       const userToken = getUserToken(req);
-      if (conversation.userToken && userToken !== conversation.userToken) {
+      if (!conversation.userToken || conversation.userToken !== userToken) {
         return res.status(403).json({ error: "Forbidden" });
       }
 
