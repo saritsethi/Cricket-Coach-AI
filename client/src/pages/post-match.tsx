@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ function FixtureSelector({
   return (
     <div className="space-y-2">
       {teams.map((team) => {
-        const teamFixtures = fixtures[team.id] || [];
+        const teamFixtures = (fixtures[team.id] || []).filter(f => f.status === "planned" || f.status === "completed");
         const isExpanded = expandedTeam === team.id;
         return (
           <div key={team.id}>
@@ -137,6 +137,17 @@ export function PostMatchPage() {
     setShowSaveForm(false);
     setSummaryNotes("");
   };
+
+  useEffect(() => {
+    if (!preselectedFixtureId || selectedFixture || !fixtureQueries.data) return;
+    for (const teamFixtures of Object.values(fixtureQueries.data)) {
+      const match = teamFixtures.find(f => f.id === preselectedFixtureId);
+      if (match) {
+        handleFixtureSelect(match);
+        break;
+      }
+    }
+  }, [preselectedFixtureId, fixtureQueries.data, selectedFixture]);
 
   const handleShareClick = () => {
     if (analysis?.shareToken) {

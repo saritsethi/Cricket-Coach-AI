@@ -6,12 +6,12 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import OpenAI from "openai";
 import { z } from "zod";
 import type { AppMode } from "@shared/schema";
+import type { Team } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 const createConversationSchema = z.object({
   title: z.string().min(1).max(200),
   mode: z.enum(["pre-match", "post-match", "player"]),
-  userToken: z.string().optional(),
 });
 
 const sendMessageSchema = z.object({
@@ -27,6 +27,30 @@ const sendMessageSchema = z.object({
   isPlayerAnalysisPage: z.boolean().optional(),
 });
 
+const squadMemberSchema = z.object({
+  name: z.string().min(1).max(200),
+  role: z.string().optional(),
+  battingStyle: z.string().optional(),
+  bowlingStyle: z.string().optional(),
+});
+
+const squadBulkSchema = z.object({
+  members: z.array(squadMemberSchema),
+});
+
+const fixtureSchema = z.object({
+  opponent: z.string().min(1).max(200),
+  matchDate: z.string().optional(),
+  venue: z.string().optional(),
+  format: z.string().optional(),
+  homeAway: z.string().optional(),
+  teamId: z.number().optional(),
+});
+
+const fixtureBulkSchema = z.object({
+  fixtures: z.array(fixtureSchema),
+});
+
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -34,6 +58,32 @@ const openai = new OpenAI({
 
 function getUserToken(req: Request): string | undefined {
   return (req.headers["x-user-token"] as string) || undefined;
+}
+
+function requireUserToken(req: Request, res: Response): string | null {
+  const token = getUserToken(req);
+  if (!token) {
+    res.status(400).json({ error: "x-user-token header required" });
+    return null;
+  }
+  return token;
+}
+
+async function getTeamForCaptain(
+  teamId: number,
+  captainToken: string,
+  res: Response
+): Promise<Team | null> {
+  const team = await storage.getTeam(teamId);
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return null;
+  }
+  if (team.captainToken !== captainToken) {
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+  return team;
 }
 
 export async function registerRoutes(
@@ -45,7 +95,8 @@ export async function registerRoutes(
 
   app.get("/api/conversations", async (req, res) => {
     try {
-      const userToken = getUserToken(req);
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
       const conversations = await storage.getConversations(userToken);
       res.json(conversations);
     } catch (error) {
@@ -56,10 +107,11 @@ export async function registerRoutes(
 
   app.get("/api/conversations/:id", async (req, res) => {
     try {
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
-      const userToken = getUserToken(req);
       if (conversation.userToken && userToken !== conversation.userToken) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -73,14 +125,15 @@ export async function registerRoutes(
 
   app.post("/api/conversations", async (req, res) => {
     try {
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
       const parsed = createConversationSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const userToken = parsed.data.userToken || getUserToken(req);
       const conversation = await storage.createConversation({
         ...parsed.data,
-        userToken: userToken || null,
+        userToken,
         userId: null,
       });
       res.status(201).json(conversation);
@@ -92,10 +145,11 @@ export async function registerRoutes(
 
   app.delete("/api/conversations/:id", async (req, res) => {
     try {
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
       const id = parseInt(req.params.id as string);
       const conversation = await storage.getConversation(id);
       if (!conversation) return res.status(404).json({ error: "Not found" });
-      const userToken = getUserToken(req);
       if (conversation.userToken && userToken !== conversation.userToken) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -186,7 +240,7 @@ export async function registerRoutes(
 
       const stream = await openai.chat.completions.create({
         model: hasImage ? "gpt-4o" : "gpt-4o-mini",
-        messages: chatHistory as any,
+        messages: chatHistory as Parameters<typeof openai.chat.completions.create>[0]["messages"],
         stream: true,
         max_completion_tokens: 4096,
       });
@@ -243,8 +297,8 @@ export async function registerRoutes(
 
   app.get("/api/teams", async (req, res) => {
     try {
-      const captainToken = getUserToken(req);
-      if (!captainToken) return res.status(400).json({ error: "captainToken required" });
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
       const teamList = await storage.getTeams(captainToken);
       res.json(teamList);
     } catch (error) {
@@ -254,12 +308,11 @@ export async function registerRoutes(
 
   app.get("/api/teams/:id", async (req, res) => {
     try {
-      const captainToken = getUserToken(req);
-      const team = await storage.getTeam(parseInt(req.params.id));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const team = await storage.getTeam(parseInt(req.params.id as string));
       if (!team) return res.status(404).json({ error: "Team not found" });
-      if (captainToken && team.captainToken !== captainToken) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
+      if (team.captainToken !== captainToken) return res.status(403).json({ error: "Forbidden" });
       res.json(team);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch team" });
@@ -268,9 +321,9 @@ export async function registerRoutes(
 
   app.post("/api/teams", async (req, res) => {
     try {
-      const captainToken = getUserToken(req);
-      if (!captainToken) return res.status(400).json({ error: "captainToken required" });
-      const { name } = req.body;
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const { name } = req.body as { name?: string };
       if (!name) return res.status(400).json({ error: "name is required" });
       const team = await storage.createTeam({ captainToken, name });
       res.status(201).json(team);
@@ -281,13 +334,11 @@ export async function registerRoutes(
 
   app.patch("/api/teams/:id", async (req, res) => {
     try {
-      const captainToken = getUserToken(req);
-      const team = await storage.getTeam(parseInt(req.params.id));
-      if (!team) return res.status(404).json({ error: "Team not found" });
-      if (!captainToken || team.captainToken !== captainToken) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const updated = await storage.updateTeam(team.id, req.body);
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const team = await getTeamForCaptain(parseInt(req.params.id as string), captainToken, res);
+      if (!team) return;
+      const updated = await storage.updateTeam(team.id, req.body as Partial<{ name: string }>);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update team" });
@@ -296,12 +347,10 @@ export async function registerRoutes(
 
   app.delete("/api/teams/:id", async (req, res) => {
     try {
-      const captainToken = getUserToken(req);
-      const team = await storage.getTeam(parseInt(req.params.id));
-      if (!team) return res.status(404).json({ error: "Team not found" });
-      if (!captainToken || team.captainToken !== captainToken) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const team = await getTeamForCaptain(parseInt(req.params.id as string), captainToken, res);
+      if (!team) return;
       await storage.deleteTeam(team.id);
       res.status(204).send();
     } catch (error) {
@@ -313,7 +362,12 @@ export async function registerRoutes(
 
   app.get("/api/teams/:teamId/squad", async (req, res) => {
     try {
-      const members = await storage.getSquadMembers(parseInt(req.params.teamId));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const members = await storage.getSquadMembers(teamId);
       res.json(members);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch squad" });
@@ -322,8 +376,14 @@ export async function registerRoutes(
 
   app.post("/api/teams/:teamId/squad", async (req, res) => {
     try {
-      const teamId = parseInt(req.params.teamId);
-      const member = await storage.createSquadMember({ ...req.body, teamId });
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const parsed = squadMemberSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      const member = await storage.createSquadMember({ ...parsed.data, teamId });
       res.status(201).json(member);
     } catch (error) {
       res.status(500).json({ error: "Failed to create squad member" });
@@ -332,10 +392,14 @@ export async function registerRoutes(
 
   app.post("/api/teams/:teamId/squad/bulk", async (req, res) => {
     try {
-      const teamId = parseInt(req.params.teamId);
-      const { members } = req.body as { members: any[] };
-      if (!Array.isArray(members)) return res.status(400).json({ error: "members array required" });
-      const created = await storage.bulkCreateSquadMembers(members.map(m => ({ ...m, teamId })));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const parsed = squadBulkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      const created = await storage.bulkCreateSquadMembers(parsed.data.members.map(m => ({ ...m, teamId })));
       res.status(201).json(created);
     } catch (error) {
       res.status(500).json({ error: "Failed to bulk create squad members" });
@@ -344,8 +408,17 @@ export async function registerRoutes(
 
   app.patch("/api/squad/:id", async (req, res) => {
     try {
-      const member = await storage.updateSquadMember(parseInt(req.params.id), req.body);
-      res.json(member);
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const memberId = parseInt(req.params.id as string);
+      const member = await storage.getSquadMember(memberId);
+      if (!member) return res.status(404).json({ error: "Squad member not found" });
+      const team = await getTeamForCaptain(member.teamId, captainToken, res);
+      if (!team) return;
+      const parsed = squadMemberSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      const updated = await storage.updateSquadMember(memberId, parsed.data);
+      res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update squad member" });
     }
@@ -353,7 +426,14 @@ export async function registerRoutes(
 
   app.delete("/api/squad/:id", async (req, res) => {
     try {
-      await storage.deleteSquadMember(parseInt(req.params.id));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const memberId = parseInt(req.params.id as string);
+      const member = await storage.getSquadMember(memberId);
+      if (!member) return res.status(404).json({ error: "Squad member not found" });
+      const team = await getTeamForCaptain(member.teamId, captainToken, res);
+      if (!team) return;
+      await storage.deleteSquadMember(memberId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete squad member" });
@@ -364,7 +444,12 @@ export async function registerRoutes(
 
   app.get("/api/teams/:teamId/schedules", async (req, res) => {
     try {
-      const schedules = await storage.getSeasonSchedules(parseInt(req.params.teamId));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const schedules = await storage.getSeasonSchedules(teamId);
       res.json(schedules);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch schedules" });
@@ -373,8 +458,13 @@ export async function registerRoutes(
 
   app.post("/api/teams/:teamId/schedules", async (req, res) => {
     try {
-      const teamId = parseInt(req.params.teamId);
-      const schedule = await storage.createSeasonSchedule({ ...req.body, teamId });
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const { seasonName } = req.body as { seasonName?: string };
+      const schedule = await storage.createSeasonSchedule({ teamId, seasonName: seasonName || "Season 2025" });
       res.status(201).json(schedule);
     } catch (error) {
       res.status(500).json({ error: "Failed to create schedule" });
@@ -383,7 +473,12 @@ export async function registerRoutes(
 
   app.get("/api/teams/:teamId/fixtures", async (req, res) => {
     try {
-      const fixtures = await storage.getScheduledMatchesByTeam(parseInt(req.params.teamId));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const teamId = parseInt(req.params.teamId as string);
+      const team = await getTeamForCaptain(teamId, captainToken, res);
+      if (!team) return;
+      const fixtures = await storage.getScheduledMatchesByTeam(teamId);
       res.json(fixtures);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch fixtures" });
@@ -392,8 +487,24 @@ export async function registerRoutes(
 
   app.post("/api/schedules/:scheduleId/fixtures", async (req, res) => {
     try {
-      const scheduleId = parseInt(req.params.scheduleId);
-      const fixture = await storage.createScheduledMatch({ ...req.body, scheduleId });
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const scheduleId = parseInt(req.params.scheduleId as string);
+      const schedule = await storage.getSeasonSchedule(scheduleId);
+      if (!schedule) return res.status(404).json({ error: "Schedule not found" });
+      const team = await getTeamForCaptain(schedule.teamId, captainToken, res);
+      if (!team) return;
+      const parsed = fixtureSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      const fixture = await storage.createScheduledMatch({
+        ...parsed.data,
+        scheduleId,
+        teamId: team.id,
+        status: "upcoming",
+        matchDate: parsed.data.matchDate || "TBD",
+        format: parsed.data.format || "T20",
+        homeAway: parsed.data.homeAway || "home",
+      });
       res.status(201).json(fixture);
     } catch (error) {
       res.status(500).json({ error: "Failed to create fixture" });
@@ -402,10 +513,26 @@ export async function registerRoutes(
 
   app.post("/api/schedules/:scheduleId/fixtures/bulk", async (req, res) => {
     try {
-      const scheduleId = parseInt(req.params.scheduleId);
-      const { fixtures } = req.body as { fixtures: any[] };
-      if (!Array.isArray(fixtures)) return res.status(400).json({ error: "fixtures array required" });
-      const created = await storage.bulkCreateScheduledMatches(fixtures.map(f => ({ ...f, scheduleId })));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const scheduleId = parseInt(req.params.scheduleId as string);
+      const schedule = await storage.getSeasonSchedule(scheduleId);
+      if (!schedule) return res.status(404).json({ error: "Schedule not found" });
+      const team = await getTeamForCaptain(schedule.teamId, captainToken, res);
+      if (!team) return;
+      const parsed = fixtureBulkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      const created = await storage.bulkCreateScheduledMatches(
+        parsed.data.fixtures.map(f => ({
+          ...f,
+          scheduleId,
+          teamId: team.id,
+          status: "upcoming" as const,
+          matchDate: f.matchDate || "TBD",
+          format: f.format || "T20",
+          homeAway: f.homeAway || "home",
+        }))
+      );
       res.status(201).json(created);
     } catch (error) {
       res.status(500).json({ error: "Failed to bulk create fixtures" });
@@ -414,8 +541,15 @@ export async function registerRoutes(
 
   app.patch("/api/fixtures/:id", async (req, res) => {
     try {
-      const fixture = await storage.updateScheduledMatch(parseInt(req.params.id), req.body);
-      res.json(fixture);
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const fixtureId = parseInt(req.params.id as string);
+      const fixture = await storage.getScheduledMatch(fixtureId);
+      if (!fixture) return res.status(404).json({ error: "Fixture not found" });
+      const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
+      if (!team) return;
+      const updated = await storage.updateScheduledMatch(fixtureId, req.body as Partial<{ status: string; result: string }>);
+      res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update fixture" });
     }
@@ -425,7 +559,14 @@ export async function registerRoutes(
 
   app.get("/api/fixtures/:fixtureId/plan", async (req, res) => {
     try {
-      const plan = await storage.getMatchPlan(parseInt(req.params.fixtureId));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const fixtureId = parseInt(req.params.fixtureId as string);
+      const fixture = await storage.getScheduledMatch(fixtureId);
+      if (!fixture) return res.status(404).json({ error: "Fixture not found" });
+      const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
+      if (!team) return;
+      const plan = await storage.getMatchPlan(fixtureId);
       res.json(plan || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch match plan" });
@@ -434,14 +575,20 @@ export async function registerRoutes(
 
   app.post("/api/fixtures/:fixtureId/plan", async (req, res) => {
     try {
-      const scheduledMatchId = parseInt(req.params.fixtureId);
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const scheduledMatchId = parseInt(req.params.fixtureId as string);
+      const fixture = await storage.getScheduledMatch(scheduledMatchId);
+      if (!fixture) return res.status(404).json({ error: "Fixture not found" });
+      const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
+      if (!team) return;
       const existing = await storage.getMatchPlan(scheduledMatchId);
       if (existing) {
-        const updated = await storage.updateMatchPlan(existing.id, req.body);
+        const updated = await storage.updateMatchPlan(existing.id, req.body as Partial<{ conversationId: number; battingOrder: string; bowlingPlan: string; notes: string }>);
         await storage.updateScheduledMatch(scheduledMatchId, { status: "planned" });
         return res.json(updated);
       }
-      const plan = await storage.createMatchPlan({ ...req.body, scheduledMatchId });
+      const plan = await storage.createMatchPlan({ ...req.body as { conversationId?: number; battingOrder?: string; bowlingPlan?: string; notes?: string }, scheduledMatchId });
       await storage.updateScheduledMatch(scheduledMatchId, { status: "planned" });
       res.status(201).json(plan);
     } catch (error) {
@@ -453,7 +600,14 @@ export async function registerRoutes(
 
   app.get("/api/fixtures/:fixtureId/analysis", async (req, res) => {
     try {
-      const analysis = await storage.getMatchAnalysis(parseInt(req.params.fixtureId));
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const fixtureId = parseInt(req.params.fixtureId as string);
+      const fixture = await storage.getScheduledMatch(fixtureId);
+      if (!fixture) return res.status(404).json({ error: "Fixture not found" });
+      const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
+      if (!team) return;
+      const analysis = await storage.getMatchAnalysis(fixtureId);
       res.json(analysis || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch analysis" });
@@ -462,15 +616,22 @@ export async function registerRoutes(
 
   app.post("/api/fixtures/:fixtureId/analysis", async (req, res) => {
     try {
-      const scheduledMatchId = parseInt(req.params.fixtureId);
+      const captainToken = requireUserToken(req, res);
+      if (!captainToken) return;
+      const scheduledMatchId = parseInt(req.params.fixtureId as string);
+      const fixture = await storage.getScheduledMatch(scheduledMatchId);
+      if (!fixture) return res.status(404).json({ error: "Fixture not found" });
+      const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
+      if (!team) return;
       const existing = await storage.getMatchAnalysis(scheduledMatchId);
       const shareToken = existing?.shareToken || randomUUID();
+      const payload = req.body as { conversationId?: number; summaryNotes?: string; matchPlanId?: number };
       if (existing) {
-        const updated = await storage.updateMatchAnalysis(existing.id, { ...req.body, shareToken });
+        const updated = await storage.updateMatchAnalysis(existing.id, { ...payload, shareToken });
         await storage.updateScheduledMatch(scheduledMatchId, { status: "completed" });
         return res.json(updated);
       }
-      const analysis = await storage.createMatchAnalysis({ ...req.body, scheduledMatchId, shareToken });
+      const analysis = await storage.createMatchAnalysis({ ...payload, scheduledMatchId, shareToken });
       await storage.updateScheduledMatch(scheduledMatchId, { status: "completed" });
       res.status(201).json(analysis);
     } catch (error) {
@@ -482,7 +643,7 @@ export async function registerRoutes(
 
   app.get("/api/analysis/:shareToken", async (req, res) => {
     try {
-      const analysis = await storage.getMatchAnalysisByToken(req.params.shareToken);
+      const analysis = await storage.getMatchAnalysisByToken(req.params.shareToken as string);
       if (!analysis) return res.status(404).json({ error: "Analysis not found" });
 
       const fixture = await storage.getScheduledMatch(analysis.scheduledMatchId);
@@ -498,7 +659,7 @@ export async function registerRoutes(
 
   app.post("/api/player-sessions", async (req, res) => {
     try {
-      const { analysisId, playerName, userToken } = req.body;
+      const { analysisId, playerName, userToken } = req.body as { analysisId?: number; playerName?: string; userToken?: string };
       if (!analysisId || !playerName || !userToken) {
         return res.status(400).json({ error: "analysisId, playerName, userToken required" });
       }
@@ -521,7 +682,7 @@ export async function registerRoutes(
 
   app.patch("/api/player-sessions/:id", async (req, res) => {
     try {
-      const session = await storage.updatePlayerSession(parseInt(req.params.id), req.body);
+      const session = await storage.updatePlayerSession(parseInt(req.params.id as string), req.body as Partial<{ conversationId: number }>);
       res.json(session);
     } catch (error) {
       res.status(500).json({ error: "Failed to update player session" });

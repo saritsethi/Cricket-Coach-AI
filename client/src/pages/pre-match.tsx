@@ -35,7 +35,7 @@ function FixtureSelector({
   return (
     <div className="space-y-2">
       {teams.map((team) => {
-        const teamFixtures = (fixtures[team.id] || []).filter(f => f.status !== "completed");
+        const teamFixtures = (fixtures[team.id] || []).filter(f => f.status === "upcoming" || f.status === "planned");
         const isExpanded = expandedTeam === team.id;
         return (
           <div key={team.id}>

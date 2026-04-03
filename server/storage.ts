@@ -65,6 +65,7 @@ export interface IStorage {
   bulkCreateSquadMembers(members: InsertSquadMember[]): Promise<SquadMember[]>;
 
   getSeasonSchedules(teamId: number): Promise<SeasonSchedule[]>;
+  getSeasonSchedule(id: number): Promise<SeasonSchedule | undefined>;
   createSeasonSchedule(schedule: InsertSeasonSchedule): Promise<SeasonSchedule>;
 
   getScheduledMatches(scheduleId: number): Promise<ScheduledMatch[]>;
@@ -265,6 +266,10 @@ export class DatabaseStorage implements IStorage {
   // Season schedules
   async getSeasonSchedules(teamId: number) {
     return db.select().from(seasonSchedules).where(eq(seasonSchedules.teamId, teamId)).orderBy(desc(seasonSchedules.createdAt));
+  }
+  async getSeasonSchedule(id: number) {
+    const [schedule] = await db.select().from(seasonSchedules).where(eq(seasonSchedules.id, id));
+    return schedule;
   }
   async createSeasonSchedule(schedule: InsertSeasonSchedule) {
     const [created] = await db.insert(seasonSchedules).values(schedule).returning();

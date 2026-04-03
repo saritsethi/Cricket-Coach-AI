@@ -12,6 +12,7 @@ import { TeamDetailPage } from "@/pages/team-detail";
 import { PreMatchPage } from "@/pages/pre-match";
 import { PostMatchPage } from "@/pages/post-match";
 import { PlayerAnalysisPage } from "@/pages/player-analysis";
+import { PlayerCoachingPage } from "@/pages/player-coaching";
 import NotFound from "@/pages/not-found";
 
 const style = {
@@ -37,6 +38,7 @@ function CaptainLayout() {
               <Route path="/teams/:id" component={TeamDetailPage} />
               <Route path="/pre-match" component={PreMatchPage} />
               <Route path="/post-match" component={PostMatchPage} />
+              <Route path="/player" component={PlayerCoachingPage} />
               <Route path="/">
                 <Redirect to="/teams" />
               </Route>

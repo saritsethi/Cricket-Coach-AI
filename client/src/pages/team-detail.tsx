@@ -401,7 +401,7 @@ function ScheduleTab({ teamId }: { teamId: number }) {
       if (Array.isArray(data) && data.length > 0) {
         const scheduleId = await ensureSchedule();
         await apiRequest("POST", `/api/schedules/${scheduleId}/fixtures/bulk`, {
-          fixtures: data.map((f: any) => ({ ...f, teamId, format: f.format || "T20", homeAway: "home" })),
+          fixtures: (data as { opponent: string; matchDate?: string; venue?: string; format?: string; homeAway?: string }[]).map(f => ({ ...f, teamId, format: f.format || "T20", homeAway: "home" })),
         });
         queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "fixtures"] });
         toast({ title: `Imported ${data.length} fixtures from schedule` });

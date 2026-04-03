@@ -12,14 +12,18 @@ import {
 } from "@/components/ui/sidebar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy, Crown, BarChart2, MessageSquare, Trash2 } from "lucide-react";
+import { Trophy, Crown, BarChart2, MessageSquare, Trash2, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Conversation } from "@shared/schema";
 
-const navItems = [
+const captainNavItems = [
   { label: "My Teams", href: "/teams", Icon: Trophy },
   { label: "Pre-Match Planning", href: "/pre-match", Icon: Crown },
   { label: "Post-Match Analysis", href: "/post-match", Icon: BarChart2 },
+];
+
+const playerNavItems = [
+  { label: "Player Coaching", href: "/player", Icon: GraduationCap },
 ];
 
 export function AppSidebar() {
@@ -52,6 +56,25 @@ export function AppSidebar() {
     "equipment": MessageSquare,
   };
 
+  function NavItem({ label, href, Icon }: { label: string; href: string; Icon: typeof Crown }) {
+    const isActive = location === href || (href !== "/" && location.startsWith(href));
+    return (
+      <Link href={href}>
+        <div
+          className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors ${
+            isActive
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+          data-testid={`nav-${href.slice(1) || "home"}`}
+        >
+          <Icon className="w-4 h-4 shrink-0" />
+          <span>{label}</span>
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
@@ -75,26 +98,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>Captain</SidebarGroupLabel>
           <SidebarGroupContent>
             <nav className="flex flex-col gap-1 px-2">
-              {navItems.map(({ label, href, Icon }) => {
-                const isActive = location === href || (href !== "/" && location.startsWith(href));
-                return (
-                  <Link key={href} href={href}>
-                    <div
-                      className={`
-                        flex items-center gap-3 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors
-                        ${isActive
-                          ? "bg-primary/10 text-primary font-medium"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }
-                      `}
-                      data-testid={`nav-${href.slice(1) || "home"}`}
-                    >
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <span>{label}</span>
-                    </div>
-                  </Link>
-                );
-              })}
+              {captainNavItems.map(({ label, href, Icon }) => (
+                <NavItem key={href} label={label} href={href} Icon={Icon} />
+              ))}
+            </nav>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Player</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <nav className="flex flex-col gap-1 px-2">
+              {playerNavItems.map(({ label, href, Icon }) => (
+                <NavItem key={href} label={label} href={href} Icon={Icon} />
+              ))}
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
