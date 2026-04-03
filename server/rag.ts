@@ -1,5 +1,36 @@
+import OpenAI from "openai";
 import { storage } from "./storage";
 import type { AppMode } from "@shared/schema";
+
+export type ExtractedSquadMember = {
+  name: string;
+  role: string;
+  battingStyle: string;
+  bowlingStyle: string;
+};
+
+export type ExtractedFixture = {
+  opponent: string;
+  matchDate: string;
+  venue: string;
+  format: string;
+};
+
+export type ExtractedScorecard = {
+  team1: string;
+  team2: string;
+  team1Score: string;
+  team2Score: string;
+  result: string;
+  topBatter: string;
+  topBowler: string;
+  summary: string;
+};
+
+export type ExtractionResult<T extends "squad" | "schedule" | "scorecard"> =
+  T extends "squad" ? ExtractedSquadMember[] :
+  T extends "schedule" ? ExtractedFixture[] :
+  ExtractedScorecard;
 
 function extractKeywords(query: string): string[] {
   const stopWords = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "shall", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "but", "about", "against", "not", "or", "and", "if", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "how", "when", "where", "why", "all", "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "nor", "only", "own", "same", "so", "than", "too", "very", "just", "because", "also", "my", "your", "his", "her", "its", "our", "their", "i", "me", "we", "you", "he", "she", "it", "they", "them", "us"]);
@@ -398,13 +429,13 @@ export function getSystemPrompt(
   return prompt;
 }
 
-export async function extractDataFromImage(
+export async function extractDataFromImage<T extends "squad" | "schedule" | "scorecard">(
   imageUrl: string,
-  extractionType: "squad" | "schedule" | "scorecard",
-  openai: any,
+  extractionType: T,
+  openai: OpenAI,
   host: string,
   context?: string
-): Promise<any> {
+): Promise<ExtractionResult<T>> {
   const prompts: Record<string, string> = {
     squad: `You are analysing a team sheet or squad list image. Extract all player information you can see.
 Return a JSON array with this exact structure:
@@ -444,8 +475,9 @@ Only return the JSON object, nothing else.`,
   const text = response.choices[0]?.message?.content || "[]";
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(cleaned);
+    return JSON.parse(cleaned) as ExtractionResult<T>;
   } catch {
-    return extractionType === "scorecard" ? {} : [];
+    const fallback = extractionType === "scorecard" ? ({} as ExtractedScorecard) : ([] as ExtractedSquadMember[] | ExtractedFixture[]);
+    return fallback as ExtractionResult<T>;
   }
 }

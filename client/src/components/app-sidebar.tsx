@@ -51,9 +51,6 @@ export function AppSidebar() {
     "pre-match": Crown,
     "post-match": BarChart2,
     "player": MessageSquare,
-    "captain": Crown,
-    "skills": MessageSquare,
-    "equipment": MessageSquare,
   };
 
   function NavItem({ label, href, Icon }: { label: string; href: string; Icon: typeof Crown }) {
