@@ -741,7 +741,11 @@ export async function registerRoutes(
       if (existing) {
         let conversationMessages = null;
         if (existing.conversationId) {
-          conversationMessages = await storage.getMessages(existing.conversationId);
+          // Verify the linked conversation still belongs to this userToken before returning messages
+          const conv = await storage.getConversation(existing.conversationId);
+          if (conv && conv.userToken === userToken) {
+            conversationMessages = await storage.getMessages(existing.conversationId);
+          }
         }
         return res.json({ session: existing, messages: conversationMessages });
       }
@@ -761,7 +765,18 @@ export async function registerRoutes(
       const existing = await storage.getPlayerSessionById(sessionId);
       if (!existing) return res.status(404).json({ error: "Session not found" });
       if (existing.userToken !== userToken) return res.status(403).json({ error: "Forbidden" });
-      const session = await storage.updatePlayerSession(sessionId, req.body as Partial<{ conversationId: number }>);
+
+      const patch = req.body as Partial<{ conversationId: number }>;
+
+      // If a conversationId is being linked, verify it belongs to this userToken
+      if (patch.conversationId !== undefined) {
+        const conv = await storage.getConversation(patch.conversationId);
+        if (!conv || conv.userToken !== userToken) {
+          return res.status(403).json({ error: "Conversation does not belong to this user" });
+        }
+      }
+
+      const session = await storage.updatePlayerSession(sessionId, patch);
       res.json(session);
     } catch (error) {
       res.status(500).json({ error: "Failed to update player session" });
