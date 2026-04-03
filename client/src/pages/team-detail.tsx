@@ -346,6 +346,9 @@ function ScheduleTab({ teamId }: { teamId: number }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ opponent: "", matchDate: "", venue: "", format: "T20", homeAway: "home" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingFixtureId, setEditingFixtureId] = useState<number | null>(null);
+  const [editFixtureForm, setEditFixtureForm] = useState({ opponent: "", matchDate: "", venue: "", format: "T20", homeAway: "home" });
+  const [editFixtureSaving, setEditFixtureSaving] = useState(false);
 
   const { data: fixtures = [], isLoading } = useQuery<ScheduledMatch[]>({
     queryKey: ["/api/teams", teamId, "fixtures"],
@@ -381,6 +384,32 @@ function ScheduleTab({ teamId }: { teamId: number }) {
       toast({ title: "Failed to add fixture", variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEditFixture = (fixture: ScheduledMatch) => {
+    setEditingFixtureId(fixture.id);
+    setEditFixtureForm({
+      opponent: fixture.opponent,
+      matchDate: fixture.matchDate || "",
+      venue: fixture.venue || "",
+      format: fixture.format || "T20",
+      homeAway: fixture.homeAway || "home",
+    });
+  };
+
+  const handleEditFixtureSave = async () => {
+    if (!editingFixtureId || !editFixtureForm.opponent.trim()) return;
+    setEditFixtureSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/fixtures/${editingFixtureId}`, editFixtureForm);
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "fixtures"] });
+      setEditingFixtureId(null);
+      toast({ title: "Fixture updated" });
+    } catch {
+      toast({ title: "Failed to update fixture", variant: "destructive" });
+    } finally {
+      setEditFixtureSaving(false);
     }
   };
 
@@ -509,48 +538,112 @@ function ScheduleTab({ teamId }: { teamId: number }) {
         <div className="space-y-2">
           {fixtures.map((fixture) => (
             <Card key={fixture.id} className="px-4 py-3" data-testid={`fixture-card-${fixture.id}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">vs {fixture.opponent}</span>
-                    <Badge
-                      className={`text-xs ${statusColors[fixture.status || "upcoming"]}`}
-                      variant="outline"
-                    >
-                      {fixture.status || "upcoming"}
-                    </Badge>
+              {editingFixtureId === fixture.id ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      autoFocus
+                      placeholder="Opponent *"
+                      value={editFixtureForm.opponent}
+                      onChange={(e) => setEditFixtureForm(f => ({ ...f, opponent: e.target.value }))}
+                      data-testid={`input-edit-fixture-opponent-${fixture.id}`}
+                    />
+                    <Input
+                      type="date"
+                      value={editFixtureForm.matchDate}
+                      onChange={(e) => setEditFixtureForm(f => ({ ...f, matchDate: e.target.value }))}
+                      data-testid={`input-edit-fixture-date-${fixture.id}`}
+                    />
+                    <Input
+                      placeholder="Venue"
+                      value={editFixtureForm.venue}
+                      onChange={(e) => setEditFixtureForm(f => ({ ...f, venue: e.target.value }))}
+                      data-testid={`input-edit-fixture-venue-${fixture.id}`}
+                    />
+                    <Select value={editFixtureForm.format} onValueChange={(v) => setEditFixtureForm(f => ({ ...f, format: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="T20">T20</SelectItem>
+                        <SelectItem value="ODI">ODI</SelectItem>
+                        <SelectItem value="T10">T10</SelectItem>
+                        <SelectItem value="Test">Test</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {fixture.matchDate}
-                    {fixture.venue ? ` · ${fixture.venue}` : ""}
-                    {" · "}{fixture.format}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleEditFixtureSave}
+                      disabled={editFixtureSaving || !editFixtureForm.opponent.trim()}
+                      data-testid={`button-save-edit-fixture-${fixture.id}`}
+                    >
+                      {editFixtureSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditingFixtureId(null)}
+                      data-testid={`button-cancel-edit-fixture-${fixture.id}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Cancel
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {fixture.status !== "completed" && (
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">vs {fixture.opponent}</span>
+                      <Badge
+                        className={`text-xs ${statusColors[fixture.status || "upcoming"]}`}
+                        variant="outline"
+                      >
+                        {fixture.status || "upcoming"}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {fixture.matchDate}
+                      {fixture.venue ? ` · ${fixture.venue}` : ""}
+                      {" · "}{fixture.format}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => startEditFixture(fixture)}
+                      data-testid={`button-edit-fixture-${fixture.id}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    {fixture.status !== "completed" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => navigate(`/pre-match?fixture=${fixture.id}`)}
+                        data-testid={`button-plan-fixture-${fixture.id}`}
+                      >
+                        <Crown className="w-3 h-3" />
+                        Plan
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 px-2 text-xs gap-1"
-                      onClick={() => navigate(`/pre-match?fixture=${fixture.id}`)}
-                      data-testid={`button-plan-fixture-${fixture.id}`}
+                      onClick={() => navigate(`/post-match?fixture=${fixture.id}`)}
+                      data-testid={`button-analyse-fixture-${fixture.id}`}
                     >
-                      <Crown className="w-3 h-3" />
-                      Plan
+                      <BarChart2 className="w-3 h-3" />
+                      Analyse
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={() => navigate(`/post-match?fixture=${fixture.id}`)}
-                    data-testid={`button-analyse-fixture-${fixture.id}`}
-                  >
-                    <BarChart2 className="w-3 h-3" />
-                    Analyse
-                  </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </Card>
           ))}
         </div>

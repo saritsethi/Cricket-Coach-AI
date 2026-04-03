@@ -85,6 +85,7 @@ export interface IStorage {
   updateMatchAnalysis(id: number, data: Partial<InsertMatchAnalysis>): Promise<MatchAnalysis>;
 
   getPlayerSession(analysisId: number, playerName: string, userToken: string): Promise<PlayerSession | undefined>;
+  getPlayerSessionById(id: number): Promise<PlayerSession | undefined>;
   createPlayerSession(session: InsertPlayerSession): Promise<PlayerSession>;
   updatePlayerSession(id: number, data: Partial<InsertPlayerSession>): Promise<PlayerSession>;
 }
@@ -341,6 +342,10 @@ export class DatabaseStorage implements IStorage {
         eq(playerSessions.userToken, userToken)
       )
     );
+    return session;
+  }
+  async getPlayerSessionById(id: number) {
+    const [session] = await db.select().from(playerSessions).where(eq(playerSessions.id, id));
     return session;
   }
   async createPlayerSession(session: InsertPlayerSession) {

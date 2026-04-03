@@ -582,13 +582,22 @@ export async function registerRoutes(
       if (!fixture) return res.status(404).json({ error: "Fixture not found" });
       const team = await getTeamForCaptain(fixture.teamId, captainToken, res);
       if (!team) return;
+      const payload = req.body as { conversationId?: number; battingOrder?: string; bowlingPlan?: string; notes?: string };
+
+      // Auto-extract image URLs from the conversation messages for plan context
+      let imageUrls: string[] = [];
+      if (payload.conversationId) {
+        const msgs = await storage.getMessages(payload.conversationId);
+        imageUrls = msgs.filter(m => m.imageUrl).map(m => m.imageUrl!);
+      }
+
       const existing = await storage.getMatchPlan(scheduledMatchId);
       if (existing) {
-        const updated = await storage.updateMatchPlan(existing.id, req.body as Partial<{ conversationId: number; battingOrder: string; bowlingPlan: string; notes: string }>);
+        const updated = await storage.updateMatchPlan(existing.id, { ...payload, imageUrls: imageUrls.length > 0 ? imageUrls : (existing.imageUrls || []) });
         await storage.updateScheduledMatch(scheduledMatchId, { status: "planned" });
         return res.json(updated);
       }
-      const plan = await storage.createMatchPlan({ ...req.body as { conversationId?: number; battingOrder?: string; bowlingPlan?: string; notes?: string }, scheduledMatchId });
+      const plan = await storage.createMatchPlan({ ...payload, scheduledMatchId, imageUrls });
       await storage.updateScheduledMatch(scheduledMatchId, { status: "planned" });
       res.status(201).json(plan);
     } catch (error) {
@@ -626,12 +635,29 @@ export async function registerRoutes(
       const existing = await storage.getMatchAnalysis(scheduledMatchId);
       const shareToken = existing?.shareToken || randomUUID();
       const payload = req.body as { conversationId?: number; summaryNotes?: string; matchPlanId?: number };
+
+      // Auto-extract image URLs from the conversation messages for analysis context
+      let imageUrls: string[] = [];
+      if (payload.conversationId) {
+        const msgs = await storage.getMessages(payload.conversationId);
+        imageUrls = msgs.filter(m => m.imageUrl).map(m => m.imageUrl!);
+      }
+      // Also include plan images if we have a plan
+      if (imageUrls.length === 0 && existing?.scheduledMatchId) {
+        const plan = await storage.getMatchPlan(scheduledMatchId);
+        if (plan?.imageUrls?.length) imageUrls = plan.imageUrls;
+      }
+
       if (existing) {
-        const updated = await storage.updateMatchAnalysis(existing.id, { ...payload, shareToken });
+        const updated = await storage.updateMatchAnalysis(existing.id, {
+          ...payload,
+          shareToken,
+          imageUrls: imageUrls.length > 0 ? imageUrls : (existing.imageUrls || []),
+        });
         await storage.updateScheduledMatch(scheduledMatchId, { status: "completed" });
         return res.json(updated);
       }
-      const analysis = await storage.createMatchAnalysis({ ...payload, scheduledMatchId, shareToken });
+      const analysis = await storage.createMatchAnalysis({ ...payload, scheduledMatchId, shareToken, imageUrls });
       await storage.updateScheduledMatch(scheduledMatchId, { status: "completed" });
       res.status(201).json(analysis);
     } catch (error) {
@@ -682,7 +708,13 @@ export async function registerRoutes(
 
   app.patch("/api/player-sessions/:id", async (req, res) => {
     try {
-      const session = await storage.updatePlayerSession(parseInt(req.params.id as string), req.body as Partial<{ conversationId: number }>);
+      const userToken = requireUserToken(req, res);
+      if (!userToken) return;
+      const sessionId = parseInt(req.params.id as string);
+      const existing = await storage.getPlayerSessionById(sessionId);
+      if (!existing) return res.status(404).json({ error: "Session not found" });
+      if (existing.userToken !== userToken) return res.status(403).json({ error: "Forbidden" });
+      const session = await storage.updatePlayerSession(sessionId, req.body as Partial<{ conversationId: number }>);
       res.json(session);
     } catch (error) {
       res.status(500).json({ error: "Failed to update player session" });

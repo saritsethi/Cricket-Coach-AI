@@ -138,11 +138,17 @@ export function PlayerAnalysisPage() {
     return parts.join("\n");
   }, [analysisData]);
 
-  const extraBody = useMemo(() => ({
-    playerName: playerName || undefined,
-    matchContext,
-    isPlayerAnalysisPage: true,
-  }), [playerName, matchContext]);
+  const extraBody = useMemo(() => {
+    const analysisImages = analysisData?.analysis?.imageUrls || [];
+    const planImages = analysisData?.plan?.imageUrls || [];
+    const allImages = [...analysisImages, ...planImages];
+    return {
+      playerName: playerName || undefined,
+      matchContext,
+      imageUrls: allImages.length > 0 ? allImages : undefined,
+      isPlayerAnalysisPage: true,
+    };
+  }, [playerName, matchContext, analysisData]);
 
   if (analysisLoading) {
     return (
