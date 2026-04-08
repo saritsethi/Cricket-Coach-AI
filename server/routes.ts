@@ -11,12 +11,12 @@ import { randomUUID } from "crypto";
 
 const createConversationSchema = z.object({
   title: z.string().min(1).max(200),
-  mode: z.enum(["pre-match", "post-match", "player"]),
+  mode: z.enum(["pre-match", "post-match", "player", "general"]),
 });
 
 const sendMessageSchema = z.object({
   content: z.string().min(1).max(10000),
-  mode: z.enum(["pre-match", "post-match", "player"]),
+  mode: z.enum(["pre-match", "post-match", "player", "general"]),
   imageUrl: z.string().optional(),
   imageUrls: z.array(z.string()).optional(),
   playerName: z.string().optional(),
