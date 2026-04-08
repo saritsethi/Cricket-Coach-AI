@@ -200,12 +200,53 @@ async function getPlayerContext(query: string, playerName?: string, matchContext
   return parts.join("\n");
 }
 
+async function getGeneralContext(query: string): Promise<string> {
+  const keywords = extractKeywords(query);
+  const parts: string[] = [];
+
+  const matchResults = await Promise.all(
+    keywords.slice(0, 4).map(kw => storage.searchMatches(kw))
+  );
+  const uniqueMatches = new Map();
+  matchResults.flat().forEach(m => uniqueMatches.set(m.id, m));
+  const relevantMatches = Array.from(uniqueMatches.values()).slice(0, 3);
+  if (relevantMatches.length > 0) {
+    parts.push("=== REFERENCE MATCH DATA ===");
+    for (const match of relevantMatches) {
+      parts.push(`Match: ${match.matchTitle}`);
+      parts.push(`Teams: ${match.team1} vs ${match.team2} | Type: ${match.matchType}`);
+      parts.push(`Venue: ${match.venue} | Result: ${match.result}`);
+      if (match.scorecardUrl) parts.push(`Scorecard: ${match.scorecardUrl}`);
+      parts.push("---");
+    }
+  }
+
+  const playerResults = await Promise.all(
+    keywords.slice(0, 3).map(kw => storage.searchPlayers(kw))
+  );
+  const uniquePlayers = new Map();
+  playerResults.flat().forEach(p => uniquePlayers.set(p.id, p));
+  const relevantPlayers = Array.from(uniquePlayers.values()).slice(0, 4);
+  if (relevantPlayers.length > 0) {
+    parts.push("=== PLAYER PROFILES ===");
+    relevantPlayers.forEach(p => {
+      parts.push(`${p.name} (${p.country}) - ${p.role}`);
+      if (p.strengths?.length) parts.push(`  Strengths: ${p.strengths.join(", ")}`);
+      if (p.weaknesses?.length) parts.push(`  Weaknesses: ${p.weaknesses.join(", ")}`);
+    });
+  }
+
+  return parts.join("\n");
+}
+
 export async function getRAGContext(
   mode: AppMode,
   query: string,
   opts?: { squadContext?: string; prePlan?: string; playerName?: string; matchContext?: string }
 ): Promise<string> {
   switch (mode) {
+    case "general":
+      return getGeneralContext(query);
     case "pre-match":
       return getPreMatchContext(query, opts?.squadContext);
     case "post-match":
@@ -230,6 +271,14 @@ CRITICAL OUTPUT FORMAT RULES:
 - If the user says "more detail" or "explain more", THEN you can give a longer, comprehensive response.`;
 
 const SYSTEM_PROMPTS: Record<string, string> = {
+  "general": `You are CricketIQ, a knowledgeable and concise cricket advisor. You help captains, coaches, and players with any cricket question — rules, tactics, technique, formats, history, and strategy.
+
+You are approachable and direct. Whether the question is about the DLS method, field placements, batting techniques, or how to build team culture, give a clear, practical answer.
+
+Keep responses SHORT and focused. Use bullet points or short paragraphs — not long essays. If the user wants more depth, they'll ask.
+
+When relevant, draw on reference match data provided to illustrate your points with real examples.`,
+
   "pre-match": `You are CricketIQ Pre-Match Planning Advisor, an expert cricket tactical analyst helping captains prepare for their next match.
 
 You help captains with:
@@ -332,6 +381,11 @@ This is NOT optional. You MUST include the <<FOLLOWUP>> and <<END_FOLLOWUP>> tag
 4. If the user says "just give me your best answer" or "skip the questions", give your comprehensive answer WITHOUT the follow-up tags.`;
 
 const FALLBACK_FOLLOWUPS: Record<string, string[]> = {
+  "general": [
+    "What format of cricket are you playing — T20, ODI, or something else?",
+    "Is this for your own team or are you asking about professional cricket?",
+    "Would you like me to go deeper into any particular aspect of that?",
+  ],
   "pre-match": [
     "What format is this match (T20, ODI, or Test) and who are you playing against?",
     "Which bowlers do you have available and what are their main strengths?",

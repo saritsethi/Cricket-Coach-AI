@@ -13,6 +13,7 @@ import { PreMatchPage } from "@/pages/pre-match";
 import { PostMatchPage } from "@/pages/post-match";
 import { PlayerAnalysisPage } from "@/pages/player-analysis";
 import { PlayerCoachingPage } from "@/pages/player-coaching";
+import { GeneralChatPage } from "@/pages/general-chat";
 import NotFound from "@/pages/not-found";
 
 // Ensure userToken is generated deterministically on first app module load
@@ -37,13 +38,14 @@ function CaptainLayout() {
           </header>
           <main className="flex-1 overflow-hidden">
             <Switch>
+              <Route path="/chat" component={GeneralChatPage} />
               <Route path="/teams" component={TeamsPage} />
               <Route path="/teams/:id" component={TeamDetailPage} />
               <Route path="/pre-match" component={PreMatchPage} />
               <Route path="/post-match" component={PostMatchPage} />
               <Route path="/player" component={PlayerCoachingPage} />
               <Route path="/">
-                <Redirect to="/teams" />
+                <Redirect to="/chat" />
               </Route>
               <Route component={NotFound} />
             </Switch>

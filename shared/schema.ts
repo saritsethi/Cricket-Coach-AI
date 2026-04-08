@@ -241,9 +241,21 @@ export type PlayerSession = typeof playerSessions.$inferSelect;
 
 // ─── App Mode ─────────────────────────────────────────────────────────────────
 
-export type AppMode = "pre-match" | "post-match" | "player";
+export type AppMode = "pre-match" | "post-match" | "player" | "general";
 
 const ALL_PROMPTS: Record<AppMode, { label: string; prompt: string; icon: string }[]> = {
+  "general": [
+    { label: "Explain the DLS method", prompt: "Can you explain how the Duckworth-Lewis-Stern method works in rain-affected matches?", icon: "zap" },
+    { label: "T20 batting tactics", prompt: "What are the key batting tactics that separate good T20 teams from great ones?", icon: "trending-up" },
+    { label: "Best field placements", prompt: "How do I set the most effective field for an off-spinner bowling to a right-hander?", icon: "target" },
+    { label: "Reading pitch conditions", prompt: "How do I read a pitch before a match to decide whether to bat or bowl first?", icon: "eye" },
+    { label: "Building a balanced squad", prompt: "What's the ideal squad balance for a T20 team — how many batters, bowlers, all-rounders?", icon: "shield" },
+    { label: "Managing match pressure", prompt: "How should a captain manage pressure moments in a tight chase?", icon: "flame" },
+    { label: "Death bowling tactics", prompt: "What are the best death-over bowling tactics to restrict runs in the final 4 overs?", icon: "rotate-ccw" },
+    { label: "Powerplay strategy", prompt: "How should I plan my powerplay — both batting and bowling — to gain an early advantage?", icon: "zap" },
+    { label: "Improving team culture", prompt: "What are some practical ways to improve team morale and culture in a club cricket side?", icon: "award" },
+    { label: "Handling a batting collapse", prompt: "Our top order collapsed early. How should the lower-order approach the rebuild?", icon: "trending-down" },
+  ],
   "pre-match": [
     { label: "Set optimal batting order", prompt: "Based on my squad, what's the optimal batting order for today's T20 match?", icon: "trending-up" },
     { label: "Bowling rotation plan", prompt: "How should I rotate my bowlers across 20 overs against a strong top order?", icon: "rotate-ccw" },

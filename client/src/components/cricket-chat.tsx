@@ -4,10 +4,15 @@ import { queryClient, apiRequest, getUserToken } from "@/lib/queryClient";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { PromptSuggestions } from "@/components/prompt-suggestions";
-import { Crown, BarChart2, User } from "lucide-react";
+import { Crown, BarChart2, User, MessageSquare } from "lucide-react";
 import type { AppMode, Message, Conversation } from "@shared/schema";
 
 const modeConfig: Record<AppMode, { label: string; Icon: typeof Crown; greeting: string }> = {
+  "general": {
+    label: "Ask CricketIQ",
+    Icon: MessageSquare,
+    greeting: "Ask me anything about cricket — tactics, rules, technique, field placements, or strategy. No uploads needed, just ask.",
+  },
   "pre-match": {
     label: "Pre-Match Planning",
     Icon: Crown,

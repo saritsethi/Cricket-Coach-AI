@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Conversation } from "@shared/schema";
 
 const captainNavItems = [
+  { label: "Ask CricketIQ", href: "/chat", Icon: MessageSquare },
   { label: "My Teams", href: "/teams", Icon: Trophy },
   { label: "Pre-Match Planning", href: "/pre-match", Icon: Crown },
   { label: "Post-Match Analysis", href: "/post-match", Icon: BarChart2 },
@@ -48,9 +49,10 @@ export function AppSidebar() {
   };
 
   const modeIcons: Record<string, typeof Crown> = {
+    "general": MessageSquare,
     "pre-match": Crown,
     "post-match": BarChart2,
-    "player": MessageSquare,
+    "player": GraduationCap,
   };
 
   function NavItem({ label, href, Icon }: { label: string; href: string; Icon: typeof Crown }) {
