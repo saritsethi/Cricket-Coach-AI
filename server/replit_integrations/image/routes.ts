@@ -11,7 +11,7 @@ export function registerImageRoutes(app: Express): void {
       }
 
       const response = await openai.images.generate({
-        model: "gpt-image-1",
+        model: "gemini-2.5-flash-image",
         prompt,
         n: 1,
         size: size as "1024x1024" | "512x512" | "256x256",
@@ -24,6 +24,9 @@ export function registerImageRoutes(app: Express): void {
       });
     } catch (error) {
       console.error("Error generating image:", error);
+      if ((error as any)?.status === 429) {
+        return res.status(429).json({ error: "Image generation is temporarily unavailable: the Gemini free-tier quota for image generation is exceeded. Please try again later." });
+      }
       res.status(500).json({ error: "Failed to generate image" });
     }
   });

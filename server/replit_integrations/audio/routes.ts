@@ -3,6 +3,7 @@ import { chatStorage } from "../chat/storage";
 import { openai, speechToText, ensureCompatibleFormat } from "./client";
 
 // Body parser with 50MB limit for audio payloads
+import { AUDIO_UNAVAILABLE_MESSAGE } from "../../ai";
 const audioBodyParser = express.json({ limit: "50mb" });
 
 export function registerAudioRoutes(app: Express): void {
@@ -63,7 +64,11 @@ export function registerAudioRoutes(app: Express): void {
   app.post("/api/conversations/:id/messages", audioBodyParser, async (req: Request, res: Response) => {
     try {
       const conversationId = parseInt(req.params.id as string);
-      const { audio, voice = "alloy" } = req.body;
+      // Voice is not available with the Gemini provider: Google OpenAI-compatible
+    // endpoint returns 404 for audio endpoints and for chat completions with
+    // audio output. The code is left in place; text chat is unaffected.
+    return res.status(503).json({ error: AUDIO_UNAVAILABLE_MESSAGE });
+    const { audio, voice = "alloy" } = req.body;
 
       if (!audio) {
         return res.status(400).json({ error: "Audio data (base64) is required" });

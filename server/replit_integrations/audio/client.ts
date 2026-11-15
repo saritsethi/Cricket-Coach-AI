@@ -1,4 +1,5 @@
 import OpenAI, { toFile } from "openai";
+import { createAiClient } from "../../ai";
 import { Buffer } from "node:buffer";
 import { spawn } from "child_process";
 import { writeFile, unlink, readFile } from "fs/promises";
@@ -6,10 +7,7 @@ import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
 
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+export const openai = createAiClient();
 
 export type AudioFormat = "wav" | "mp3" | "webm" | "mp4" | "ogg" | "unknown";
 
@@ -244,7 +242,7 @@ export async function speechToText(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const response = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "gemini-3.5-transcribe",
   });
   return response.text;
 }
@@ -260,7 +258,7 @@ export async function speechToTextStream(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const stream = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "gemini-3.5-transcribe",
     stream: true,
   });
 

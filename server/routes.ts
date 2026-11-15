@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { getRAGContext, getSystemPrompt, enforceFollowUp, enforceCitations, extractDataFromImage } from "./rag";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import OpenAI from "openai";
+import { createAiClient } from "./ai";
 import { z } from "zod";
 import type { AppMode } from "@shared/schema";
 import type { Team } from "@shared/schema";
@@ -51,10 +52,7 @@ const fixtureBulkSchema = z.object({
   fixtures: z.array(fixtureSchema),
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+const openai = createAiClient();
 
 function getUserToken(req: Request): string | undefined {
   return (req.headers["x-user-token"] as string) || (req.query.userToken as string) || undefined;
@@ -276,7 +274,7 @@ export async function registerRoutes(
       res.setHeader("Connection", "keep-alive");
 
       const stream = await openai.chat.completions.create({
-        model: hasImage ? "gpt-4o" : "gpt-4o-mini",
+        model: hasImage ? "gemini-3.5-flash" : "gemini-3.5-flash-lite",
         messages: chatHistory as Parameters<typeof openai.chat.completions.create>[0]["messages"],
         stream: true,
         max_completion_tokens: 4096,

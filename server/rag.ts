@@ -513,7 +513,7 @@ Only return the JSON object, nothing else.`,
     : prompts[extractionType];
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gemini-3.5-flash",
     messages: [
       {
         role: "user",

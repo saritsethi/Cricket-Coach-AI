@@ -1,4 +1,3 @@
-import { File } from "@google-cloud/storage";
 
 const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 
@@ -104,31 +103,36 @@ function createObjectAccessGroup(
 
 // Sets the ACL policy to the object metadata.
 export async function setObjectAclPolicy(
-  objectFile: File,
+  objectPath: string,
   aclPolicy: ObjectAclPolicy,
 ): Promise<void> {
-  const [exists] = await objectFile.exists();
-  if (!exists) {
-    throw new Error(`Object not found: ${objectFile.name}`);
-  }
-
-  await objectFile.setMetadata({
-    metadata: {
-      [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy),
-    },
-  });
+  // Vercel Blob has no per-object custom metadata. The ACL policy is
+  // derived from the path (see getObjectAclPolicy), so there is nothing
+  // to store. Kept as a no-op so existing callers keep working.
+  void objectPath;
+  void aclPolicy;
 }
 
 // Gets the ACL policy from the object metadata.
 export async function getObjectAclPolicy(
-  objectFile: File,
+  objectPath: string,
 ): Promise<ObjectAclPolicy | null> {
-  const [metadata] = await objectFile.getMetadata();
-  const aclPolicy = metadata?.metadata?.[ACL_POLICY_METADATA_KEY];
-  if (!aclPolicy) {
-    return null;
+  // Vercel Blob has no per-object custom metadata, so the ACL policy is
+  // derived from the path: anything under a public search path is public,
+  // anything under the private directory is private.
+  const publicPaths = (process.env.PUBLIC_OBJECT_SEARCH_PATHS || "")
+    .split(",")
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+  const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
+  const normalized = objectPath.startsWith("/") ? objectPath : "/" + objectPath;
+  if (privateDir && normalized.startsWith(privateDir)) {
+    return { owner: "", visibility: "private" };
   }
-  return JSON.parse(aclPolicy as string);
+  if (publicPaths.some((path) => normalized.startsWith(path))) {
+    return { owner: "", visibility: "public" };
+  }
+  return null;
 }
 
 // Checks if the user can access the object.
@@ -138,11 +142,11 @@ export async function canAccessObject({
   requestedPermission,
 }: {
   userId?: string;
-  objectFile: File;
+  objectPath: string;
   requestedPermission: ObjectPermission;
 }): Promise<boolean> {
   // When this function is called, the acl policy is required.
-  const aclPolicy = await getObjectAclPolicy(objectFile);
+  const aclPolicy = await getObjectAclPolicy(objectPath);
   if (!aclPolicy) {
     return false;
   }

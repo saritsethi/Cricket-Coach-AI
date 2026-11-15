@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { handleUpload } from "@vercel/blob/client";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 
 /**
@@ -35,30 +36,35 @@ export function registerObjectStorageRoutes(app: Express): void {
    * IMPORTANT: The client should NOT send the file to this endpoint.
    * Send JSON metadata only, then upload the file directly to uploadURL.
    */
-  app.post("/api/uploads/request-url", async (req, res) => {
+    // Client upload flow (Vercel Blob): the browser calls upload() from
+  // @vercel/blob/client with handleUploadUrl "/api/blob/handle-upload".
+  // This route mints the client token; the client then uploads directly
+  // to Blob storage and receives the blob pathname back.
+  app.post("/api/blob/handle-upload", async (req, res) => {
     try {
-      const { name, size, contentType } = req.body;
-
-      if (!name) {
-        return res.status(400).json({
-          error: "Missing required field: name",
-        });
-      }
-
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-
-      // Extract object path from the presigned URL for later reference
-      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-      res.json({
-        uploadURL,
-        objectPath,
-        // Echo back the metadata for client convenience
-        metadata: { name, size, contentType },
+      const jsonResponse = await handleUpload({
+        body: req.body,
+        request: req,
+        onBeforeGenerateToken: async (pathname) => {
+          return {
+            allowedContentTypes: [
+              "image/jpeg",
+              "image/png",
+              "image/gif",
+              "image/webp",
+              "image/avif",
+            ],
+            tokenPayload: JSON.stringify({ pathname }),
+          };
+        },
+        onUploadCompleted: async ({ blob }) => {
+          void blob;
+        },
       });
+      res.status(200).json(jsonResponse);
     } catch (error) {
-      console.error("Error generating upload URL:", error);
-      res.status(500).json({ error: "Failed to generate upload URL" });
+      console.error("Error handling blob upload:", error);
+      res.status(400).json({ error: (error as Error).message });
     }
   });
 

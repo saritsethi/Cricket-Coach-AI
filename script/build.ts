@@ -59,6 +59,20 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+  console.log("building api entry...");
+  await esbuild({
+    entryPoints: ["artifacts/api-server/src/server-entry.cts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "api/index.cjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
 }
 
 buildAll().catch((err) => {
