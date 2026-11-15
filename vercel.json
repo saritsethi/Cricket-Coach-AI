@@ -2,9 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "npm run build",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.cjs" }],
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.js" }],
   "functions": {
-    "api/index.cjs": {
+    "api/index.js": {
       "includeFiles": "dist/public/**"
     }
   }

@@ -61,16 +61,19 @@ async function buildAll() {
   });
   console.log("building api entry...");
   await esbuild({
-    entryPoints: ["artifacts/api-server/src/server-entry.cts"],
+    entryPoints: ["artifacts/api-server/src/server-entry.ts"],
     platform: "node",
     bundle: true,
-    format: "cjs",
-    outfile: "api/index.cjs",
+    format: "esm",
+    outfile: "api/index.js",
     define: {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
     external: externals,
+    banner: {
+      js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+    },
     logLevel: "info",
   });
 }
