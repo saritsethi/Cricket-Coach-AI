@@ -30,7 +30,7 @@ export function GeneralChatPage({ initialConversationId }: { initialConversation
           mode="general"
           conversationId={conversationId}
           onConversationCreated={setConversationId}
-          placeholder="Ask anything about cricket..."
+          placeholder="Ask anything about cricket…"
         />
       </div>
     </div>
