@@ -40,11 +40,11 @@ function parseCitations(text: string): { cleanText: string; citations: Citation[
   let match;
   while ((match = regex.exec(text)) !== null) {
     const lines = match[1].trim().split("\n").map(l => l.trim()).filter(Boolean);
-    if (lines.length > 0) {
+    if (lines.length >= 1) {
       let url: string | null = null;
       const detailLines: string[] = [];
       for (const line of lines.slice(1)) {
-        const urlMatch = line.match(/\[(.*?)\]\((https?:\/\/[^\s]+)\)/);
+        const urlMatch = line.match(/\[.*?\]\((https?:\/\/[^\s)]+)\)/);
         const plainUrlMatch = line.match(/(?:Scorecard|URL|Link):\s*(https?:\/\/[^\s]+)/i);
         if (urlMatch) {
           url = urlMatch[1];
@@ -101,11 +101,11 @@ function parseReferences(text: string): { cleanText: string; references: Referen
     for (const line of lines) {
       const urlMatch = line.match(/\[(.*?)\]\((.*?)\)/);
       if (urlMatch) {
-        const isYoutube = urlMatch[2].includes("youtube.com") || urlMatch[2].includes("youtu.be");
+        const isYouTube = urlMatch[2].includes("youtube.com") || urlMatch[2].includes("youtu.be");
         references.push({
           title: urlMatch[1],
           url: urlMatch[2],
-          type: isYoutube ? "youtube" : "article",
+          type: isYouTube ? "youtube" : "article",
         });
       }
     }
@@ -250,9 +250,9 @@ export function ChatMessage({ role, content, imageUrl, isStreaming }: ChatMessag
           </div>
         ) : isStreaming ? (
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-pulse" />
-            <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-pulse" style={{ animationDelay: "0.15s" }} />
-            <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-pulse" style={{ animationDelay: "0.3s" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0.15s" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: "0.3s" }} />
           </div>
         ) : null}
       </div>
