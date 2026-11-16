@@ -1,16 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { queryClient } from "@/lib/queryClient";
 import { CricketChat } from "@/components/cricket-chat";
 import { GraduationCap } from "lucide-react";
 
-export function PlayerCoachingPage() {
-  const [conversationId, setConversationId] = useState<number | null>(null);
+export function PlayerCoachingPage({ initialConversationId }: { initialConversationId?: number }) {
+  const [conversationId, setConversationId] = useState<number | null>(initialConversationId ?? null);
+
+  // Keep the open conversation in sync with the route (e.g. /player/:id from
+  // a Recent Chats click), including when moving between conversations
+  // without leaving the page, or back to a fresh chat (/player).
+  useEffect(() => {
+    setConversationId(initialConversationId ?? null);
+  }, [initialConversationId]);
 
   const handleConversationCreated = (id: number) => {
     setConversationId(id);
     queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
   };
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 p-4 border-b border-border shrink-0">
@@ -20,7 +26,6 @@ export function PlayerCoachingPage() {
           <p className="text-xs text-muted-foreground">Private one-on-one coaching session</p>
         </div>
       </div>
-
       <div className="flex-1 min-h-0">
         <CricketChat
           mode="player"

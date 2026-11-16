@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { CricketChat } from "@/components/cricket-chat";
 
-export function GeneralChatPage() {
-  const [conversationId, setConversationId] = useState<number | null>(null);
+export function GeneralChatPage({ initialConversationId }: { initialConversationId?: number }) {
+  const [conversationId, setConversationId] = useState<number | null>(initialConversationId ?? null);
+
+  // Keep the open conversation in sync with the route (e.g. /chat/:id from
+  // a Recent Chats click), including when moving between conversations
+  // without leaving the chat page, or back to a fresh chat (/chat).
+  useEffect(() => {
+    setConversationId(initialConversationId ?? null);
+  }, [initialConversationId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -18,7 +25,6 @@ export function GeneralChatPage() {
           </div>
         </div>
       </div>
-
       <div className="flex-1 min-h-0">
         <CricketChat
           mode="general"

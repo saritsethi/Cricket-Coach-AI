@@ -30,7 +30,7 @@ function CaptainLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <header className="flex items-center justify-between gap-2 p-2 border-b border-border sticky top-0 z-50 bg-background shrink-0">
+          <header className="flex items-center justify-between gap-2 p-2 border-b border-border sticky top-0 z-40 bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-2">
               <ThemeToggle />
@@ -38,11 +38,21 @@ function CaptainLayout() {
           </header>
           <main className="flex-1 overflow-hidden">
             <Switch>
+              <Route path="/chat/:id">
+                {(params) => (
+                  <GeneralChatPage initialConversationId={params.id ? Number(params.id) : undefined} />
+                )}
+              </Route>
               <Route path="/chat" component={GeneralChatPage} />
               <Route path="/teams" component={TeamsPage} />
               <Route path="/teams/:id" component={TeamDetailPage} />
               <Route path="/pre-match" component={PreMatchPage} />
               <Route path="/post-match" component={PostMatchPage} />
+              <Route path="/player/:id">
+                {(params) => (
+                  <PlayerCoachingPage initialConversationId={params.id ? Number(params.id) : undefined} />
+                )}
+              </Route>
               <Route path="/player" component={PlayerCoachingPage} />
               <Route path="/">
                 <Redirect to="/chat" />
