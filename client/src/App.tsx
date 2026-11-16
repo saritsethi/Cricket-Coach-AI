@@ -36,31 +36,29 @@ function CaptainLayout() {
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-5xl px-3 py-4 sm:px-6 sm:py-6">
-              <Switch>
-                <Route path="/chat/:id">
-                  {(params) => (
-                    <GeneralChatPage initialConversationId={params.id ? Number(params.id) : undefined} />
-                  )}
-                </Route>
-                <Route path="/chat" component={GeneralChatPage} />
-                <Route path="/teams/:id" component={TeamDetailPage} />
-                <Route path="/teams" component={TeamsPage} />
-                <Route path="/pre-match" component={PreMatchPage} />
-                <Route path="/post-match" component={PostMatchPage} />
-                <Route path="/player/:id">
-                  {(params) => (
-                    <PlayerCoachingPage initialConversationId={params.id ? Number(params.id) : undefined} />
-                  )}
-                </Route>
-                <Route path="/player" component={PlayerCoachingPage} />
-                <Route path="/">
-                  <Redirect to="/chat" />
-                </Route>
-                <Route component={NotFound} />
-              </Switch>
-            </div>
+          <main className="flex-1 overflow-hidden">
+            <Switch>
+              <Route path="/chat/:id">
+                {(params) => (
+                  <GeneralChatPage initialConversationId={params.id ? Number(params.id) : undefined} />
+                )}
+              </Route>
+              <Route path="/chat" component={GeneralChatPage} />
+              <Route path="/teams" component={TeamsPage} />
+              <Route path="/teams/:id" component={TeamDetailPage} />
+              <Route path="/pre-match" component={PreMatchPage} />
+              <Route path="/post-match" component={PostMatchPage} />
+              <Route path="/player/:id">
+                {(params) => (
+                  <PlayerCoachingPage initialConversationId={params.id ? Number(params.id) : undefined} />
+                )}
+              </Route>
+              <Route path="/player" component={PlayerCoachingPage} />
+              <Route path="/">
+                <Redirect to="/chat" />
+              </Route>
+              <Route component={NotFound} />
+            </Switch>
           </main>
         </div>
       </div>
@@ -75,9 +73,7 @@ function App() {
         <TooltipProvider>
           <Router>
             <Switch>
-              <Route path="/analysis/:shareToken">
-                {(params) => <PlayerAnalysisPage shareToken={params.shareToken} />}
-              </Route>
+              <Route path="/analysis/:shareToken" component={PlayerAnalysisPage} />
               <Route component={CaptainLayout} />
             </Switch>
           </Router>
