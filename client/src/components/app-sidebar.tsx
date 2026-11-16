@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
@@ -27,15 +28,29 @@ const playerNavItems = [
   { label: "Player Coaching", href: "/player", Icon: GraduationCap },
 ];
 
-export function AppSidebar() {
-  const [location] = useLocation();
-  const { toast } = useToast();
+// Where a conversation reopens. Player chats reopen in Player Coaching.
+// Pre/post-match conversations store no fixture context, so they reopen
+// in General Chat, where their messages load — the alternative was
+// opening a fixture picker with no conversation visible at all.
+function getConversationHref(conv: Conversation): string {
+  return conv.mode === "player" ? `/player/${conv.id}` : `/chat/${conv.id}`;
+}
 
+export function AppSidebar() {
+  const [location, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
   });
-
   const recentConversations = conversations.slice(0, 8);
+
+  // Warm the teams cache while the user is elsewhere in the app, so
+  // "My Teams" does not start its first fetch only after being clicked.
+  // The query cache already uses staleTime: Infinity, so this runs once
+  // per session and the Teams page then renders from cache.
+  useEffect(() => {
+    queryClient.prefetchQuery({ queryKey: ["/api/teams"] });
+  }, []);
 
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.preventDefault();
@@ -46,6 +61,10 @@ export function AppSidebar() {
     } catch {
       toast({ title: "Failed to delete", variant: "destructive" });
     }
+  };
+
+  const openConversation = (conv: Conversation) => {
+    setLocation(getConversationHref(conv));
   };
 
   const modeIcons: Record<string, typeof Crown> = {
@@ -75,24 +94,21 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4">
+    <Sidebar collapsible="offcanvas" data-testid="sidebar">
+      <SidebarHeader className="border-b border-border">
         <Link href="/teams">
-          <div className="flex items-center gap-2 cursor-pointer">
-            <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary text-primary-foreground font-bold text-sm">
+          <div className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+            <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary text-primary-foreground font-bold">
               C
             </div>
             <div>
               <div className="font-semibold text-sm">CricketIQ</div>
-              <div className="text-xs text-muted-foreground">AI Cricket Intelligence</div>
+              <div className="text-[11px] text-muted-foreground">AI Cricket Intelligence</div>
             </div>
           </div>
         </Link>
       </SidebarHeader>
-
-      <SidebarSeparator />
-
-      <SidebarContent>
+      <SidebarContent className="flex flex-col">
         <SidebarGroup>
           <SidebarGroupLabel>Captain</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -103,9 +119,7 @@ export function AppSidebar() {
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
-
         <SidebarSeparator />
-
         <SidebarGroup>
           <SidebarGroupLabel>Player</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -116,7 +130,6 @@ export function AppSidebar() {
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
-
         {(recentConversations.length > 0 || isLoading) && (
           <>
             <SidebarSeparator />
@@ -126,15 +139,34 @@ export function AppSidebar() {
                 <div className="flex flex-col overflow-y-auto px-2 pb-2">
                   {isLoading ? (
                     <div className="flex flex-col gap-2 p-1">
-                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-8 w-full rounded-md" />
+                      ))}
                     </div>
                   ) : (
                     recentConversations.map((conv) => {
                       const ModeIcon = modeIcons[conv.mode] || MessageSquare;
+                      const href = getConversationHref(conv);
+                      const isActive = location === href;
                       return (
                         <div
                           key={conv.id}
-                          className="group flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-default transition-colors"
+                          role="button"
+                          tabIndex={0}
+                          title={`Open chat: ${conv.title}`}
+                          aria-label={`Open chat: ${conv.title}`}
+                          onClick={() => openConversation(conv)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openConversation(conv);
+                            }
+                          }}
+                          className={`group flex items-center gap-2 rounded-md px-3 py-2 text-xs cursor-pointer transition-colors ${
+                            isActive
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          }`}
                           data-testid={`conversation-item-${conv.id}`}
                         >
                           <ModeIcon className="w-3 h-3 shrink-0" />
@@ -156,11 +188,8 @@ export function AppSidebar() {
           </>
         )}
       </SidebarContent>
-
-      <SidebarFooter className="p-3">
-        <div className="text-xs text-muted-foreground text-center">
-          Powered by AI Cricket Analytics
-        </div>
+      <SidebarFooter className="border-t border-border">
+        <div className="text-xs text-muted-foreground text-center py-1">Powered by AI Cricket Analytics</div>
       </SidebarFooter>
     </Sidebar>
   );
