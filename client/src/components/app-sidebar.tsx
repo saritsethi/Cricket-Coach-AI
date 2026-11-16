@@ -94,21 +94,22 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="offcanvas" data-testid="sidebar">
-      <SidebarHeader className="border-b border-border">
+    <Sidebar>
+      <SidebarHeader className="p-4">
         <Link href="/teams">
-          <div className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+          <div className="flex items-center gap-2 cursor-pointer">
             <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary text-primary-foreground font-bold">
               C
             </div>
             <div>
               <div className="font-semibold text-sm">CricketIQ</div>
-              <div className="text-[11px] text-muted-foreground">AI Cricket Intelligence</div>
+              <div className="text-xs text-muted-foreground">AI Cricket Intelligence</div>
             </div>
           </div>
         </Link>
       </SidebarHeader>
-      <SidebarContent className="flex flex-col">
+      <SidebarSeparator />
+      <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Captain</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -139,9 +140,7 @@ export function AppSidebar() {
                 <div className="flex flex-col overflow-y-auto px-2 pb-2">
                   {isLoading ? (
                     <div className="flex flex-col gap-2 p-1">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-8 w-full rounded-md" />
-                      ))}
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
                     </div>
                   ) : (
                     recentConversations.map((conv) => {
@@ -188,8 +187,8 @@ export function AppSidebar() {
           </>
         )}
       </SidebarContent>
-      <SidebarFooter className="border-t border-border">
-        <div className="text-xs text-muted-foreground text-center py-1">Powered by AI Cricket Analytics</div>
+      <SidebarFooter className="p-3">
+        <div className="text-xs text-muted-foreground text-center">Powered by AI Cricket Analytics</div>
       </SidebarFooter>
     </Sidebar>
   );
